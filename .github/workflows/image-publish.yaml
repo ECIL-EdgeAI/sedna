@@ -2,9 +2,11 @@
 # https://docs.docker.com/ci-cd/github-actions/
 # https://docs.github.com/cn/actions/guides/publishing-docker-images
 name: Publish Docker Images
+
 on:
-  release:
-    types: [published]
+  push:
+    branches:
+      - main
 
 jobs:
   push_to_registry:
