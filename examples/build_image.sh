@@ -82,6 +82,7 @@ joint-inference-helmet-detection-little.Dockerfile
 
 dockerfiles_lifelong_learning=(
 lifelong-learning-atcii-classifier.Dockerfile
+lifelong-learning-robo-rfnet.Dockerfile
 )
 
 dockerfiles_incremental_learning=(
