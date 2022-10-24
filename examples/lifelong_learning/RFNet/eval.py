@@ -58,7 +58,6 @@ class Validator(object):
                 image, depth, target = sample['image'], sample['depth'], sample['label']
             else:
                 image, target = sample['image'], sample['label']
-            
             if self.args.cuda:
                 image = image.cuda()
                 if self.args.depth:
@@ -69,36 +68,37 @@ class Validator(object):
                     output = self.model(image, depth)
                 else:
                     output = self.model(image)
-                    
             if self.args.cuda:
                 torch.cuda.synchronize()
 
             pred = output.data.cpu().numpy()
-            # todo
             pred = np.argmax(pred, axis=1)
             predictions.append(pred)
 
-            if not self.args.save_predicted_image:
-                continue
-            
+            # Save prediction images
             pre_colors = Colorize(n=self.args.num_class)(torch.max(output, 1)[1].detach().cpu().byte())
             pre_labels = torch.max(output, 1)[1].detach().cpu().byte()
-            # save
             for i in range(pre_colors.shape[0]):
                 if not image_name[0]:
                     img_name = f"test_{time.time()}.png"
                 else:
                     img_name = os.path.basename(image_name[0])
 
+                if not self.args.merge:
+                    continue
+                merge_label_name = os.path.join(self.args.merge_label_save_path, img_name)
+                os.makedirs(os.path.dirname(merge_label_name), exist_ok=True)
+                pre_color_image = ToPILImage()(pre_colors[i])  # pre_colors.dtype = float64
+                image_merge(image[i], pre_color_image, merge_label_name)
+                print('save image: {}'.format(merge_label_name))
+
+                if not self.args.save_predicted_image:
+                    continue
                 color_label_name = os.path.join(self.args.color_label_save_path, img_name)
                 label_name = os.path.join(self.args.label_save_path, img_name)
-                merge_label_name = os.path.join(self.args.merge_label_save_path, img_name)
-
                 os.makedirs(os.path.dirname(color_label_name), exist_ok=True)
-                os.makedirs(os.path.dirname(merge_label_name), exist_ok=True)
                 os.makedirs(os.path.dirname(label_name), exist_ok=True)
 
-                pre_color_image = ToPILImage()(pre_colors[i])  # pre_colors.dtype = float64
                 # color = paint_trapezoid(np.array(pre_color_image))
                 # cv2.imwrite(color_label_name, color)
                 pre_color_image.save(color_label_name)
@@ -106,59 +106,7 @@ class Validator(object):
                 pre_label_image = ToPILImage()(pre_labels[i])
                 pre_label_image.save(label_name)
 
-                if (self.args.merge):
-                    image_merge(image[i], pre_color_image, merge_label_name)
-                    print('save image: {}'.format(merge_label_name))
-            
         return predictions
-  
-    def task_divide(self):
-        seen_task_samples, unseen_task_samples = [], []
-        self.model.eval()
-        self.evaluator.reset()
-        tbar = tqdm(self.test_loader, desc='\r')
-        for i, (sample, image_name) in enumerate(tbar):
-
-            if self.args.depth:
-                image, depth, target = sample['image'], sample['depth'], sample['label']
-            else:
-                image, target = sample['image'], sample['label']
-            if self.args.cuda:
-                image = image.cuda()
-                if self.args.depth:
-                    depth = depth.cuda()
-            start_time = time.time()
-            with torch.no_grad():
-                if self.args.depth:
-                    output_, output, _ = self.model(image, depth)
-                else:
-                    output_, output, _ = self.model(image)
-            if self.args.cuda:
-                torch.cuda.synchronize()
-            if i != 0:
-                fwt = time.time() - start_time
-                self.time_train.append(fwt)
-                print("Forward time per img (bath size=%d): %.3f (Mean: %.3f)" % (
-                    self.args.val_batch_size, fwt / self.args.val_batch_size,
-                    sum(self.time_train) / len(self.time_train) / self.args.val_batch_size))
-            time.sleep(0.1)  # to avoid overheating the GPU too much
-
-            # pred colorize
-            pre_colors = Colorize()(torch.max(output, 1)[1].detach().cpu().byte())
-            pre_labels = torch.max(output, 1)[1].detach().cpu().byte()
-            for i in range(pre_colors.shape[0]):
-                task_sample = dict()
-                task_sample.update(image=sample["image"][i])
-                task_sample.update(label=sample["label"][i])
-                if self.args.depth:
-                    task_sample.update(depth=sample["depth"][i])
-
-                if torch.max(pre_labels) == output.shape[1] - 1:
-                    unseen_task_samples.append((task_sample, image_name[i]))
-                else:
-                    seen_task_samples.append((task_sample, image_name[i]))
-
-        return seen_task_samples, unseen_task_samples
     
 def image_merge(image, label, save_name):
     image = ToPILImage()(image.detach().cpu().byte())

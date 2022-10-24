@@ -16,6 +16,7 @@ from sedna.common.config import Context
 from sedna.datasources import TxtDataParse
 from sedna.common.file_ops import FileOps
 from sedna.common.log import LOGGER
+from sedna.common.constant import KBResourceConstant, K8sResourceKindStatus
 
 from utils.lr_scheduler import LR_Scheduler
 from utils.metrics import Evaluator
@@ -95,17 +96,22 @@ class Model:
             "INFERENCE_RESULT_DIR", "./inference_results")
         self.val_args.color_label_save_path = os.path.join(
             label_save_dir, "color")
-        self.val_args.merge_label_save_path = os.path.join(
-            label_save_dir, "merge")
+
+        edge_output_url = Context.get_parameters("edge_output_url", KBResourceConstant.EDGE_KB_DIR.value)
+        self.val_args.merge_label_save_path = os.path.join(edge_output_url, "unseen_samples")
+        # self.val_args.merge_label_save_path = os.path.join(
+        #     label_save_dir, "merge")
+
         self.val_args.label_save_path = os.path.join(label_save_dir, "label")
         self.val_args.save_predicted_image = kwargs.get(
-            "save_predicted_image", True)
+            "save_predicted_image", False)
         self.val_args.num_class = int(kwargs.get("num_class", 31))
         self.val_args.weight_path = kwargs.get("weight_path")
         
         self.validator = Validator(self.val_args)
+
         # self.val_args.weight_path = "./models/ramp_train1_200.pth"
-        # self.val_args.weight_path = "./models/last_None_epoch_268_mean-iu_0.00000.pth"
+        self.val_args.merge = False
         self.validator_ramp = Validator(self.val_args)
 
     def train(self, train_data, valid_data=None, **kwargs):
@@ -357,7 +363,7 @@ def val_args():
     parser.add_argument(
         '--save-predicted-image',
         action='store_true',
-        default=True,
+        default=False,
         help='save predicted images')
     parser.add_argument('--color-label-save-path', type=str,
                         default='./test/color/',
@@ -423,7 +429,7 @@ def robo_accuracy(y_true, y_pred, **kwargs):
         else:
             image, target = sample['image'], sample['label']
         # resize = transforms.Resize([240, 424])
-        target = resize(target)
+        # target = resize(target)
         if args.cuda:
             image, target = image.cuda(), target.cuda()
             if args.depth:
@@ -437,9 +443,9 @@ def robo_accuracy(y_true, y_pred, **kwargs):
     mIoU = evaluator.Mean_Intersection_over_Union()
 
 if __name__ == '__main__':
-    model = Model(num_class=4)
+    model = Model(num_class=31)
     txt = "./data_txt/ramp_test.txt"
-    model.load("./models/last_None_epoch_268_mean-iu_0.00000.pth")
+    model.load("./models/checkpoint_1666578143.5802433.pth")
 
     data = TxtDataParse(data_type="eval", func=_load_txt_dataset)
     data.parse(txt, use_raw=False)

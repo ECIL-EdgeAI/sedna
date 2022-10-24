@@ -1,11 +1,4 @@
 import os
-# os.environ["KB_SERVER"] = "http://0.0.0.0:9020"
-# os.environ["OUTPUT_URL"] = "./cloud_kb/"
-# os.environ["test_dataset_url"] = "./data_txt/sedna_test.txt"
-# os.environ["MODEL_URLS"] = "./cloud_kb/index.pkl"
-# os.environ["operator"] = "<"
-# os.environ["model_threshold"] = "0.01"
-
 from basemodel import Model
 from sedna.core.lifelong_learning import LifelongLearning
 from sedna.datasources import TxtDataParse

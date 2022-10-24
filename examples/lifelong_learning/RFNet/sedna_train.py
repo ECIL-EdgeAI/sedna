@@ -1,10 +1,4 @@
 import os
-# os.environ["OUTPUT_URL"] = "./cloud_kb/"
-# os.environ["TRAIN_DATASET_URL"] = "./data_txt/data_.txt"
-# os.environ["KB_SERVER"] = "http://0.0.0.0:9020"
-# os.environ["HAS_COMPLETED_INITIAL_TRAINING"] = "false"
-# os.environ['CLOUD_KB_INDEX'] = "./cloud_kb/index.pkl"
-
 from basemodel import Model
 from sedna.core.lifelong_learning import LifelongLearning
 from sedna.common.config import Context, BaseConfig

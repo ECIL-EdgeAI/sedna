@@ -1,12 +1,4 @@
 import os
-# set at yaml
-# os.environ["test_dataset_url"] = "./data_txt/sedna_test.txt"
-# os.environ["video_url"] = "./video/radio.mp4"
-# os.environ["MODEL_URLS"] = "./cloud_kb/index.pkl"
-# os.environ["unseen_save_url"] = "s3://kubeedge/sedna-robo/unseen_samples/"
-# os.environ["OOD_backup_model"] = "./models/ramp_train1_200.pth"
-# os.environ["OOD_model"] = "./models/lr_model.model"
-
 import cv2
 import time
 import torch
@@ -66,7 +58,7 @@ def init_ll_job(**kwargs):
     unseen_sample_recognition = {
         "method": "OodIdentification",
         "param": {
-            "OOD_thresh": 0.15,
+            "OOD_thresh": 0.2,
             "backup_model": os.getenv("OOD_backup_model"),
             "OOD_model_path": os.getenv("OOD_model"),
             "preprocess_func": preprocess_frames,
@@ -81,7 +73,6 @@ def init_ll_job(**kwargs):
     inference_integrate = {
         "method": "InferenceIntegrateByType"
     }
-    
 
     ll_job = LifelongLearning(
         estimator,

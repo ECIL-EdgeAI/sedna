@@ -119,7 +119,7 @@ class InferenceServer(BaseServer):  # pylint: disable=too-many-arguments
             self,
             servername,
             host: str,
-            http_port: int = 5000,
+            http_port: int = 30001,
             max_buffer_size: int = 104857600,
             workers: int = 1):
         super(
