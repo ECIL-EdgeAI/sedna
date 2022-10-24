@@ -84,7 +84,7 @@ class Model:
         self.train_args = train_args()
 
         self.train_args.lr = float(kwargs.get("learning_rate", 1e-4))
-        self.train_args.epochs = int(kwargs.get("epochs", 2))
+        self.train_args.epochs = int(kwargs.get("epochs", 1))
         self.train_args.eval_interval = int(kwargs.get("eval_interval", 50))
         self.train_args.no_val = kwargs.get("no_val", True)
         self.train_args.resume = Context.get_parameters("PRETRAINED_MODEL_URL", None)
