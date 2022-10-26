@@ -5,8 +5,6 @@ import time
 import torch
 import numpy as np
 from PIL import Image
-import base64
-import tempfile
 import warnings
 
 from torchvision import transforms
