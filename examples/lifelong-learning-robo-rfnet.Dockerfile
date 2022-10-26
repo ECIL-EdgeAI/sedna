@@ -28,6 +28,6 @@ ENV PYTHONPATH "/home/lib"
 WORKDIR /home/work
 COPY ./lib /home/lib
 
-COPY examples/lifelong_learning/RFNet  /home/work/
+COPY examples/lifelong_learning/robot_dog_delivery/RFNet  /home/work/
 
 ENTRYPOINT ["python"]
