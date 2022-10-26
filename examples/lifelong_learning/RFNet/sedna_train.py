@@ -1,9 +1,9 @@
 import os
+
 from basemodel import Model
 from sedna.core.lifelong_learning import LifelongLearning
 from sedna.common.config import Context, BaseConfig
 from sedna.datasources import TxtDataParse
-from sedna.common.file_ops import FileOps
 
 def _load_txt_dataset(dataset_url):
     # use original dataset url

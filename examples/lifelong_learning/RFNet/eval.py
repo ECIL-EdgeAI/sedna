@@ -185,10 +185,11 @@ def paint_trapezoid(color):
 def load_my_state_dict(model, state_dict):  # custom function to load model when not all dict elements
     own_state = model.state_dict()
     for name, param in state_dict.items():
-        # name = "module." + name
         if name not in own_state:
-            print('{} not in model_state'.format(name))
-            continue
+            name = "module." + name
+            own_state[name].copy_(param)
+            # print('{} not in model_state'.format(name))
+            # continue
         else:
             own_state[name].copy_(param)
 

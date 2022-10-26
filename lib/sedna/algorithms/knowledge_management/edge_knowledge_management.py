@@ -194,6 +194,7 @@ class UnseenSampleUploadThread(threading.Thread):
         self.local_unseen_save_url = edge_knowledge_management.local_unseen_save_url
         self.unseen_save_url = Context.get_parameters("unseen_save_url", "/tmp")
         self.check_time = 5
+        self.current_sample_num = 0
         super(UnseenSampleUploadThread, self).__init__()
 
     def run(self):
@@ -202,11 +203,16 @@ class UnseenSampleUploadThread(threading.Thread):
             if not self.local_unseen_save_url:
                 continue
             samples = os.listdir(self.local_unseen_save_url)
-            if len(samples) == 0:
+            latest_num = len(samples)
+            if latest_num <= self.current_sample_num:
                 continue
-            for sample in samples:
+
+            samples.sort()
+            for sample in samples[self.current_sample_num:]:
                 local_sample_url = FileOps.join_path(self.local_unseen_save_url, sample)
                 dest_sample_url = FileOps.join_path(self.unseen_save_url, sample)
-                FileOps.upload(local_sample_url, dest_sample_url)
+                FileOps.upload(local_sample_url, dest_sample_url, clean=False)
+
+            self.current_sample_num = latest_num
 
 

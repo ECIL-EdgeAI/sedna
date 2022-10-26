@@ -1,9 +1,11 @@
 from typing import Tuple
+import time
 
 import torch
 import numpy as np
 from torch.utils.data import DataLoader
 import torchvision
+from PIL import Image
 
 from sedna.backend import set_backend
 from sedna.common.file_ops import FileOps
@@ -120,17 +122,18 @@ class OodIdentification:
             for j in range(maxLogit.shape[0]):
                 OOD_score = (OOD_pred_show[j] == 1).sum(
                 ) / (OOD_pred_show[j] != 0).sum()
-                # print("OOD_pred_show == 1", (OOD_pred_show[j] == 1).sum())
-                # print("OOD_pred_show != 0", (OOD_pred_show[j] != 0).sum())
-                # print("OOD_pred_show.shape", OOD_pred_show[j].shape)
-                # torchvision.utils.save_image(torch.tensor(OOD_pred_show[j]), "ood.png", normalize=True,
-                #                              value_range=(0, 2))
-
                 print('OOD_score:', OOD_score)
-                # with open("./0829_garden.txt", "a") as f:
-                #     f.write(f"{OOD_score}\n")
                 if OOD_score > self.OOD_thresh:
+                    img_raw = samples.x[0].get("image")
+                    img_raw_shape = img_raw.size
+                    img_raw = img_raw.resize((2048, 1024), Image.BILINEAR)
+                    img_raw = np.array(img_raw)
+                    changed_pixel = OOD_pred_show[j][0]
+                    img_raw[changed_pixel == 1] = [255, 0, 0]
+                    img_raw = Image.fromarray(img_raw).resize(img_raw_shape)
+                    samples.x[0]["image"] = img_raw
                     OoD_list.append(samples.x[0])
+                    # torchvision.utils.save_image(torch.tensor(OOD_pred_show[j]), "ood.png", normalize=True, value_range=(0, 2))
                 else:
                     InD_list.append(samples.x[0])
                     predictions.append(pred)

@@ -96,12 +96,8 @@ class Model:
             "INFERENCE_RESULT_DIR", "./inference_results")
         self.val_args.color_label_save_path = os.path.join(
             label_save_dir, "color")
-
-        edge_output_url = Context.get_parameters("edge_output_url", KBResourceConstant.EDGE_KB_DIR.value)
-        self.val_args.merge_label_save_path = os.path.join(edge_output_url, "unseen_samples")
-        # self.val_args.merge_label_save_path = os.path.join(
-        #     label_save_dir, "merge")
-
+        self.val_args.merge_label_save_path = os.path.join(
+            label_save_dir, "merge")
         self.val_args.label_save_path = os.path.join(label_save_dir, "label")
         self.val_args.save_predicted_image = kwargs.get(
             "save_predicted_image", False)
@@ -110,7 +106,7 @@ class Model:
         
         self.validator = Validator(self.val_args)
 
-        # self.val_args.weight_path = "./models/ramp_train1_200.pth"
+        self.val_args.weight_path = "./models/ramp_train1_200.pth"
         self.val_args.merge = False
         self.validator_ramp = Validator(self.val_args)
 
@@ -187,9 +183,9 @@ class Model:
 
         prediction = kwargs.get('prediction')
         if not prediction:
-            return (self.validator.validate(), self.validator.validate())
+            return (self.validator.validate(), self.validator_ramp.validate())
         else:
-            return (prediction, self.validator.validate())
+            return (prediction, self.validator_ramp.validate())
 
     def evaluate(self, data, **kwargs):
         samples = preprocess_url(data.x)
