@@ -142,11 +142,6 @@ class InferenceServer(BaseServer):  # pylint: disable=too-many-arguments
         
         params = dict(params)
         self.ll_job = init_ll_job(**params)
-        # self.model = Model(num_class=31)
-        # self.model.load("./models/2048x1024_80.pth")
-        self.inference_image_dir = os.environ.get("IMAGE_TOPIC_URL", "inference_images")
-        if not os.path.exists(self.inference_image_dir):
-            os.makedirs(self.inference_image_dir)
 
         self.max_buffer_size = max_buffer_size
         self.app = FastAPI(
@@ -182,14 +177,13 @@ class InferenceServer(BaseServer):  # pylint: disable=too-many-arguments
 
     async def predict(self, image: UploadFile = File(...), depth: Optional[UploadFile] = None) -> ResultResponse:
         contents = await image.read()
-        start_time = time.time()
+        start = time.time()
         self.image = Image.open(BytesIO(contents)).convert('RGB')
-        self.image.save(os.path.join(self.inference_image_dir, f"{str(time.time())}.png"))
 
         self.index_frame = self.index_frame + 1
 
-        # img_rgb = cv2.resize(np.array(self.image), (2048, 1024), interpolation=cv2.INTER_CUBIC)
-        img_rgb = Image.fromarray(np.array(self.image))
+        img_rgb = cv2.resize(np.array(self.image), (2048, 1024), interpolation=cv2.INTER_CUBIC)
+        img_rgb = Image.fromarray(np.array(img_rgb))
         if depth:
             depth_contents = await depth.read()
             depth = Image.open(BytesIO(depth_contents)).convert('RGB')
@@ -200,49 +194,12 @@ class InferenceServer(BaseServer):  # pylint: disable=too-many-arguments
 
         sample = {'image': img_rgb, "depth": img_dep, "label": img_rgb}
         predict_data = preprocess(sample)
-        end_time1 = time.time()
-        print("preprocess time:", end_time1 - start_time)
 
-        end_time2 = time.time()
-        results, is_unseen_task, _ = self.ll_job.inference(predict_data)
-        end_time3 = time.time()
-        print("inference time: ", end_time3 - end_time2)
-        if is_unseen_task:
-            return {
-                "msg": "",
-                "result": {
-                    "type": 1,
-                    "box": '',
-                    "img": '',
-                    "curr": '',
-                    "future": '',
-                    "ramp": ''
-                },
-                "code": 1
-            }
-
-        curb_results, ramp_results = results
-
-        # self.model.validator.test_loader = DataLoader(
-        #     predict_data.x,
-        #     batch_size=self.model.val_args.test_batch_size,
-        #     shuffle=False,
-        #     pin_memory=True)
-        # results = self.model.validator.validate()
-
-        img_rgb = cv2.resize(np.array(self.image), (2048, 1024), interpolation=cv2.INTER_CUBIC)
-        img_rgb = Image.fromarray(np.array(img_rgb))
-        results = post_process(curb_results)
-        curr, future = get_curb(results["result"]["box"], img_rgb)
-        results["result"]["curr"] = curr
-        results["result"]["future"] = future
-        results["result"]["box"] = None
-        results["result"]["ramp"] = get_ramp(ramp_results[0].tolist(), img_rgb)
-
-        end_time4 = time.time()
-        print("total time:", end_time4 - start_time)
-        return results
-
+        _, is_unseen_task, _ = self.ll_job.inference(predict_data)
+        print("unseen task:", is_unseen_task)
+        end = time.time()
+        print("Task finished last:", str(end-start))
+        return {"msg": "", "result": None, "code": 1}
 
 def parse_result(label, count):
     label_map = ['road', 'sidewalk']

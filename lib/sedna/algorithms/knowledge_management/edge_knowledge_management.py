@@ -120,7 +120,7 @@ class EdgeKnowledgeManagement(BaseKnowledgeManagement):
                 img = sample.get("image")
                 image_name = "{}.png".format(str(time.time()))
                 image_url = FileOps.join_path(self.local_unseen_save_url, image_name)
-                img.save(image_url)
+                # img.save(image_url)
             else:
                 image_name = os.path.basename(sample[0])
                 image_url = FileOps.join_path(self.local_unseen_save_url, image_name)
