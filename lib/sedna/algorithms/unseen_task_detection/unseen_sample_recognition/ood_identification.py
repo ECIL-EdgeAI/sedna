@@ -30,22 +30,11 @@ class OodIdentification:
     """
 
     def __init__(self, task_index, **kwargs):
-        print(task_index)
-        if isinstance(task_index, str) and FileOps.exists(task_index):
-            self.task_index = FileOps.load(task_index)
-        else:
-            self.task_index = task_index
-
         estimator = kwargs.get("base_model")()
         self.estimator = set_backend(estimator)
 
         self.backup_model = kwargs.get('backup_model')
-        if not self.backup_model:
-            self.seen_task_groups = self.task_index.get("seen_task").get("task_groups")
-            self.seen_model = [task.model for task in self.seen_task_groups][0]
-            self.estimator.load(self.seen_model.model)
-        else:
-            self.estimator.load(self.backup_model)
+        self.estimator.load(self.backup_model)
 
         self.OOD_thresh = float(kwargs.get("OOD_thresh"))
         self.OOD_model_path = kwargs.get("OOD_model_path")
@@ -125,15 +114,11 @@ class OodIdentification:
                 print('OOD_score:', OOD_score)
                 if OOD_score > self.OOD_thresh:
                     img_raw = samples.x[0].get("image")
-                    img_raw_shape = img_raw.size
-                    img_raw = img_raw.resize((2048, 1024), Image.BILINEAR)
                     img_raw = np.array(img_raw)
                     changed_pixel = OOD_pred_show[j][0]
                     img_raw[changed_pixel == 1] = [255, 0, 0]
-                    img_raw = Image.fromarray(img_raw).resize(img_raw_shape)
                     samples.x[0]["image"] = img_raw
                     OoD_list.append(samples.x[0])
-                    # torchvision.utils.save_image(torch.tensor(OOD_pred_show[j]), "ood.png", normalize=True, value_range=(0, 2))
                 else:
                     InD_list.append(samples.x[0])
                     predictions.append(pred)

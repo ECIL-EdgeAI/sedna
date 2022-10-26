@@ -106,10 +106,6 @@ class Model:
         
         self.validator = Validator(self.val_args)
 
-        self.val_args.weight_path = "./models/ramp_train1_200.pth"
-        self.val_args.merge = False
-        self.validator_ramp = Validator(self.val_args)
-
     def train(self, train_data, valid_data=None, **kwargs):
         self.trainer = Trainer(self.train_args, train_data=train_data)
         print("Total epoches:", self.trainer.args.epochs)
@@ -174,18 +170,10 @@ class Model:
             shuffle=False,
             pin_memory=False)
 
-        # TODO: predict ramp using specific model
-        self.validator_ramp.test_loader = DataLoader(
-            data,
-            batch_size=self.val_args.test_batch_size,
-            shuffle=False,
-            pin_memory=False)
-
-        prediction = kwargs.get('prediction')
-        if not prediction:
-            return (self.validator.validate(), self.validator_ramp.validate())
-        else:
-            return (prediction, self.validator_ramp.validate())
+        # prediction = kwargs.get('prediction')
+        # if not prediction:
+        prediction = self.validator.validate()
+        return (prediction, prediction)
 
     def evaluate(self, data, **kwargs):
         samples = preprocess_url(data.x)
@@ -346,7 +334,7 @@ def val_args():
         action='store_true',
         default=False,
         help='disables CUDA training')
-    parser.add_argument('--gpu-ids', type=str, default='1',
+    parser.add_argument('--gpu-ids', type=str, default='0',
                         help='use which gpu to train, must be a \
                             comma-separated list of integers only (default=0)')
     parser.add_argument('--checkname', type=str, default=None,

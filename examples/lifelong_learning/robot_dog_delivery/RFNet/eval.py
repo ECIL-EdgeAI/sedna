@@ -99,8 +99,6 @@ class Validator(object):
                 os.makedirs(os.path.dirname(color_label_name), exist_ok=True)
                 os.makedirs(os.path.dirname(label_name), exist_ok=True)
 
-                # color = paint_trapezoid(np.array(pre_color_image))
-                # cv2.imwrite(color_label_name, color)
                 pre_color_image.save(color_label_name)
 
                 pre_label_image = ToPILImage()(pre_labels[i])
@@ -110,20 +108,12 @@ class Validator(object):
     
 def image_merge(image, label, save_name):
     image = ToPILImage()(image.detach().cpu().byte())
-    # # width, height = image.size
-    # left = 140
-    # top = 30
-    # right = 2030
-    # bottom = 900
-    # # crop
-    # image = image.crop((left, top, right, bottom))
-    # # resize
     image = image.resize(label.size, Image.BILINEAR)
 
     image = image.convert('RGBA')
     label = label.convert('RGBA')
     image = Image.blend(image, label, 0.6)
-    image.save(save_name)
+    # image.save(save_name)
 
 def paint_trapezoid(color):
     input_height, input_width, _ = color.shape
