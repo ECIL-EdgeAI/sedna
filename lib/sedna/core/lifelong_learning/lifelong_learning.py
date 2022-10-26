@@ -24,6 +24,7 @@ from sedna.datasources import BaseDataSource
 from sedna.common.class_factory import ClassType, ClassFactory
 from sedna.algorithms.seen_task_learning.seen_task_learning import SeenTaskLearning
 from sedna.algorithms.unseen_task_processing import UnseenTaskProcessing
+from sedna.algorithms.unseen_task_detection.unseen_sample_recognition.unseen_sample_detection import UnseenSampleDetection
 from sedna.service.client import KBClient
 from sedna.algorithms.knowledge_management.cloud_knowledge_management \
     import CloudKnowledgeManagement
@@ -188,6 +189,11 @@ class LifelongLearning(JobBase):
         }
         self.unseen_sample_recognition_param = e._parse_param(self.unseen_sample_recognition.get("param", {}))
         self.recognize_unseen_samples = None
+
+        self.unseen_sample_detection = None
+        self.unseen_sample_detection = UnseenSampleDetection(
+            self.edge_knowledge_management
+        )
 
         self.job_kind = K8sResourceKind.LIFELONG_JOB.value
         self.kb_server = KBClient(kbserver=self.config.ll_kb_server)
@@ -396,6 +402,12 @@ class LifelongLearning(JobBase):
         -------
         """
         res, tasks, is_unseen_task = None, [], False
+
+        if not self.unseen_sample_detection:
+            self.unseen_sample_detection = UnseenSampleDetection(
+                self.edge_knowledge_management
+        )
+        self.unseen_sample_detection.start()
 
         task_index_url = Context.get_parameters(
             "MODEL_URLS", self.cloud_knowledge_management.task_index)
