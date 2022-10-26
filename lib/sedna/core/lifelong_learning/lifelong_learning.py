@@ -406,8 +406,8 @@ class LifelongLearning(JobBase):
         if not self.unseen_sample_detection:
             self.unseen_sample_detection = UnseenSampleDetection(
                 self.edge_knowledge_management
-        )
-        self.unseen_sample_detection.start()
+            )
+            self.unseen_sample_detection.start()
 
         task_index_url = Context.get_parameters(
             "MODEL_URLS", self.cloud_knowledge_management.task_index)
