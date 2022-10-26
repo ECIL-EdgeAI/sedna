@@ -52,4 +52,4 @@ ENV no_proxy ""
 # entrypoint
 
 # ENTRYPOINT ["bash"]
-RUN ["bash", "run.sh"]
+CMD ["bash", "run.sh"]
