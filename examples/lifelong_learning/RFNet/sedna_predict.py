@@ -1,4 +1,5 @@
 import os
+
 import cv2
 import time
 import torch
@@ -7,7 +8,6 @@ from PIL import Image
 import base64
 import tempfile
 import warnings
-from io import BytesIO
 
 from torchvision import transforms
 from sedna.datasources import BaseDataSource, TxtDataParse
@@ -43,7 +43,7 @@ def _load_txt_dataset(dataset_url):
     return dataset_urls[:-1], dataset_urls[-1]
 
 def init_ll_job(**kwargs):
-    estimator = Model(num_class=31, **kwargs)
+    estimator = Model(num_class=31, weight_path=kwargs.get('weight_path'))
 
     task_allocation = {
         "method": "TaskAllocationByOrigin",
@@ -58,9 +58,9 @@ def init_ll_job(**kwargs):
     unseen_sample_recognition = {
         "method": "OodIdentification",
         "param": {
-            "OOD_thresh": 0.2,
-            "backup_model": os.getenv("OOD_backup_model"),
-            "OOD_model_path": os.getenv("OOD_model"),
+            "OOD_thresh": float(kwargs.get("OOD_thresh")),
+            "backup_model": kwargs.get("OOD_backup_model"),
+            "OOD_model_path": kwargs.get("OOD_model"),
             "preprocess_func": preprocess_frames,
             "base_model": Model
         }

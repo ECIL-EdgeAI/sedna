@@ -1,4 +1,5 @@
 import os
+
 from basemodel import Model
 from sedna.core.lifelong_learning import LifelongLearning
 from sedna.datasources import TxtDataParse

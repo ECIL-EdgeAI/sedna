@@ -260,11 +260,7 @@ class SeenTaskLearning:
             for t in task.tasks:  # if model has train in tasks
                 if not (t.model and t.result):
                     continue
-                if isinstance(t.model, str):
-                    model_path = t.model
-                else:
-                    model_path = t.model.save(model_name=f"{task.entry}.model")
-
+                model_path = t.model.save(model_name=f"{task.entry}.model")
                 t.model = model_path
                 model = Model(index=i, entry=t.entry,
                               model=model_path, result=t.result)
@@ -275,15 +271,9 @@ class SeenTaskLearning:
                 res = model_obj.train(train_data=task.samples, **kwargs)
                 if callback:
                     res = callback(model_obj, res)
-                if isinstance(res, str):
-                    model_path = model_obj.save(model_name=f"{task.entry}.pth")
-                    model = Model(index=i, entry=task.entry,
-                                  model=model_path, result={})
-                else:
-                    model_path = model_obj.save(
-                        model_name=f"{task.entry}.model")
-                    model = Model(index=i, entry=task.entry,
-                                  model=model_path, result=res)
+                model_path = model_obj.save(model_name=f"{task.entry}.model")
+                model = Model(index=i, entry=task.entry,
+                              model=model_path, result=res)
 
                 model.meta_attr = [t.meta_attr for t in task.tasks]
             task.model = model
@@ -392,16 +382,9 @@ class SeenTaskLearning:
                 model_obj = set_backend(estimator=self.base_model)
                 model_obj.load(_task.model)
                 res = model_obj.train(train_data=task.samples)
-                if isinstance(res, str):
-                    model_path = model_obj.save(
-                        model_name=f"{task.entry}.pth")
-                    model = Model(index=i, entry=task.entry,
-                                  model=model_path, result={})
-                else:
-                    model_path = model_obj.save(
-                        model_name=f"{task.entry}.model")
-                    model = Model(index=i, entry=task.entry,
-                                  model=model_path, result=res)
+                model_path = model_obj.save(model_name=f"{task.entry}.model")
+                model = Model(index=i, entry=task.entry,
+                              model=model_path, result=res)
                 break
 
             model.meta_attr = [t.meta_attr for t in task.tasks]
@@ -481,7 +464,7 @@ class SeenTaskLearning:
                 continue
             if isinstance(m.model, str):
                 evaluator = set_backend(estimator=self.base_model)
-                evaluator.load(m.model)
+                # evaluator.load(m.model)
             else:
                 evaluator = m.model
             pred = evaluator.predict(df.x, **kwargs)

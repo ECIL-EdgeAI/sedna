@@ -130,9 +130,23 @@ class InferenceServer(BaseServer):  # pylint: disable=too-many-arguments
             http_port=http_port,
             workers=workers)
 
-        self.ll_job = init_ll_job() # init_ll_job(weight_path="./models/2048x1024_80.pth")
+        # params = {"weight_path": "./models/2048x1024_80.pth",
+        #           "OOD_backup_model": "./models/2048x1024_80.pth",
+        #           "OOD_model": "./models/lr_model.model",
+        #           "OOD_thresh": 0.2}
+        
+        params = {"weight_path": "./models/epoch35.pth",
+                  "OOD_backup_model": "./models/epoch35.pth",
+                  "OOD_model": "./models/lr_model35.model",
+                  "OOD_thresh": 0.45}
+        
+        params = dict(params)
+        self.ll_job = init_ll_job(**params)
         # self.model = Model(num_class=31)
         # self.model.load("./models/2048x1024_80.pth")
+        self.inference_image_dir = os.environ.get("IMAGE_TOPIC_URL", "inference_images")
+        if not os.path.exists(self.inference_image_dir):
+            os.makedirs(self.inference_image_dir)
 
         self.max_buffer_size = max_buffer_size
         self.app = FastAPI(
@@ -170,7 +184,7 @@ class InferenceServer(BaseServer):  # pylint: disable=too-many-arguments
         contents = await image.read()
         start_time = time.time()
         self.image = Image.open(BytesIO(contents)).convert('RGB')
-        self.image.save(f"/home/lsq/curb_images/{str(time.time())}.png")
+        self.image.save(os.path.join(self.inference_image_dir, f"{str(time.time())}.png"))
 
         self.index_frame = self.index_frame + 1
 
@@ -225,7 +239,6 @@ class InferenceServer(BaseServer):  # pylint: disable=too-many-arguments
         results["result"]["box"] = None
         results["result"]["ramp"] = get_ramp(ramp_results[0].tolist(), img_rgb)
 
-        print(results)
         end_time4 = time.time()
         print("total time:", end_time4 - start_time)
         return results
