@@ -48,7 +48,8 @@ ENV http_proxy ""
 ENV https_proxy ""
 ENV no_proxy ""
 
+
 WORKDIR /home/lib/ramp_detection
 
-# ENTRYPOINT ["bash"]
+# ENTRYPOINT ["python3"]
 CMD ["bash", "run.sh"]
