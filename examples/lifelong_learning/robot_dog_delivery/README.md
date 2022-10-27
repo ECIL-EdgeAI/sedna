@@ -167,6 +167,13 @@ spec:
         - image: $edge_image
           name:  infer-worker
           imagePullPolicy: IfNotPresent
+          env:
+            - name: "BIG_MODEL_IP"
+              value: "94.74.91.114"
+            - name: "BIG_MODEL_PORT"
+              value: "30001"
+            - name: "RUN_FILE"
+              value: "integration_main.py"
           resources:  # user defined resources
             limits:
               cpu: 6

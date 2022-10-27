@@ -17,8 +17,6 @@ COPY ./requirements.txt /home/requirements.txt
 
 ENV PYTHONHTTPSVERIFY "0"
 ENV PROMPT_DIRTRIM "1"
-ENV BIG_MODEL_IP "http://94.74.91.114"
-ENV BIG_MODEL_PORT "30001"
 ENV PYTHONPATH "/home/lib"
 ENV HOLD_TIME 1
 ENV PIP "https://pypi.tuna.tsinghua.edu.cn/simple"
@@ -49,7 +47,9 @@ RUN rm -rf /var/lib/apt/lists/*
 ENV http_proxy ""
 ENV https_proxy ""
 ENV no_proxy ""
-# entrypoint
 
-# ENTRYPOINT ["bash"]
+
+WORKDIR /home/lib/ramp_detection
+
+# ENTRYPOINT ["python3"]
 CMD ["bash", "run.sh"]
