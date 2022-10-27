@@ -27,8 +27,6 @@ RUN pip3 install -i $PIP --no-cache-dir -r /home/requirements-sdk.txt
 
 COPY ./run.sh /usr/local/bin/run.sh
 RUN chmod 755 /usr/local/bin/run.sh
-COPY ./ramp_run.sh /usr/local/bin/ramp_run.sh
-RUN chmod 755 /usr/local/bin/ramp_run.sh
 
 WORKDIR /home/lib
 COPY ./robosdk /home/lib/robosdk
@@ -54,4 +52,4 @@ ENV no_proxy ""
 # entrypoint
 
 # ENTRYPOINT ["bash"]
-RUN ["bash", "run.sh"]
+CMD ["bash", "run.sh"]
