@@ -51,5 +51,7 @@ ENV https_proxy ""
 ENV no_proxy ""
 # entrypoint
 
+WORKDIR /home/lib/ramp_detection
+
 # ENTRYPOINT ["bash"]
 CMD ["bash", "run.sh"]
