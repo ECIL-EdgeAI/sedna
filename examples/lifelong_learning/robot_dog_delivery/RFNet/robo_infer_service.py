@@ -37,6 +37,7 @@ from dataloaders.datasets.cityscapes import CityscapesSegmentation
 from basemodel import Model
 from dataloaders import custom_transforms as tr
 from ramp_detection_service import get_ramp
+from stream_pusher import StreamFactory
 
 class ImagePayload(BaseModel):
     image: UploadFile = File(...)
@@ -134,14 +135,31 @@ class InferenceServer(BaseServer):  # pylint: disable=too-many-arguments
         #           "OOD_backup_model": "./models/2048x1024_80.pth",
         #           "OOD_model": "./models/lr_model.model",
         #           "OOD_thresh": 0.2}
-        
+
         params = {"weight_path": "./models/epoch35.pth",
                   "OOD_backup_model": "./models/epoch35.pth",
                   "OOD_model": "./models/lr_model35.model",
                   "OOD_thresh": 0.45}
-        
+
         params = dict(params)
         self.ll_job = init_ll_job(**params)
+
+        # start push stream
+        unseen_sample_url = self.ll_job.edge_knowledge_management.local_unseen_save_url
+        seen_sample_url = self.ll_job.edge_knowledge_management.seen_estimator.estimator.base_model.val_args.merge_label_save_path
+        print(unseen_sample_url)
+        print(seen_sample_url)
+        unseen_pusher = StreamFactory().get(
+            watch_path=unseen_sample_url,
+            # TODO read from env
+            rtmp_url='rtmp://push.roboartisan.pujie.app/live/798c4bcb-569d-11ed-b164-fa163e93ea74?auth_key=1667026830-477b3bbc253f467b8def6711128c7bec-0-ad435d6ae61e04e4f88b45ad0a661b2c',
+            # rtmp_url='rtmp://119.8.112.152/myapp/test',
+            fps=20,
+            width=2048,
+            height=1024
+        )
+        unseen_pusher.run()
+        # end push stream
 
         self.max_buffer_size = max_buffer_size
         self.app = FastAPI(
@@ -171,7 +189,7 @@ class InferenceServer(BaseServer):  # pylint: disable=too-many-arguments
         return HTMLResponse(
             """<h1>Welcome to the RestNet API!</h1>
             <p>To use this service, send a POST HTTP request to {this-url}/predict</p>
-            <p>The JSON payload has the following format: {"image": "BASE64_STRING_OF_IMAGE", 
+            <p>The JSON payload has the following format: {"image": "BASE64_STRING_OF_IMAGE",
             "depth": "BASE64_STRING_OF_DEPTH"}</p>
             """)
 

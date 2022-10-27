@@ -5,7 +5,7 @@ import torch
 import numpy as np
 from torch.utils.data import DataLoader
 import torchvision
-from PIL import Image
+from PIL import Image, ImageDraw, ImageFont
 
 from sedna.backend import set_backend
 from sedna.common.file_ops import FileOps
@@ -113,10 +113,16 @@ class OodIdentification:
                 ) / (OOD_pred_show[j] != 0).sum()
                 print('OOD_score:', OOD_score)
                 if OOD_score > self.OOD_thresh:
-                    img_raw = samples.x[0].get("image")
-                    img_raw = np.array(img_raw)
+                    img_raw = samples.x[0].get("image").convert("RGBA")
+                    colored_img = np.array(Image.new("RGBA", img_raw.size, (255, 255, 255, 0)))
                     changed_pixel = OOD_pred_show[j][0]
-                    img_raw[changed_pixel == 1] = [255, 0, 0]
+                    colored_img[changed_pixel == 1] = [255, 0, 0, 150]                        
+                    colored_img = Image.fromarray(colored_img)
+                    img_raw = Image.alpha_composite(img_raw, colored_img)
+                    img_draw = ImageDraw.Draw(img_raw)
+                    img_font = ImageFont.truetype('/home/wjz/sedna/examples/lifelong_learning/robot_dog_delivery/RFNet/msyhl.ttc', 50)
+                    text = "Unseen image! \nA red pixel is unseen pixel"
+                    img_draw.text((50, 50), text, fill=(25, 25, 12, 255), font=img_font)
                     samples.x[0]["image"] = img_raw
                     OoD_list.append(samples.x[0])
                 else:

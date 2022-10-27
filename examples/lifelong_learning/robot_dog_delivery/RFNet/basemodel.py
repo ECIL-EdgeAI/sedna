@@ -1,3 +1,4 @@
+import time
 import os
 import numpy as np
 import torch
@@ -11,6 +12,7 @@ from dataloaders import custom_transforms as tr
 from torchvision import transforms
 from torch.utils.data import DataLoader
 from torchvision import transforms
+from torchvision.transforms import ToPILImage
 from sedna.common.class_factory import ClassType, ClassFactory
 from sedna.common.config import Context
 from sedna.datasources import TxtDataParse
@@ -23,6 +25,8 @@ from utils.metrics import Evaluator
 from train import Trainer
 from eval import Validator
 from eval import load_my_state_dict
+from eval import image_merge
+from dataloaders.utils import Colorize
 
 os.environ["BACKEND_TYPE"] = ''
 
@@ -103,7 +107,7 @@ class Model:
             "save_predicted_image", False)
         self.val_args.num_class = int(kwargs.get("num_class", 31))
         self.val_args.weight_path = kwargs.get("weight_path")
-        
+
         self.validator = Validator(self.val_args)
 
     def train(self, train_data, valid_data=None, **kwargs):
@@ -159,20 +163,30 @@ class Model:
 
     def predict(self, data, **kwargs):
         if isinstance(data[0], np.ndarray):
-            data = preprocess_url(data)
+            infer_data = preprocess_url(data)
 
         if isinstance(data[0], dict):
-            data = preprocess_frames(data)
+            infer_data = preprocess_frames(data)
 
         self.validator.test_loader = DataLoader(
-            data,
+            infer_data,
             batch_size=self.val_args.test_batch_size,
             shuffle=False,
             pin_memory=False)
 
-        # prediction = kwargs.get('prediction')
-        # if not prediction:
-        prediction = self.validator.validate()
+        prediction = kwargs.get('prediction')
+        if not prediction:
+            prediction = self.validator.validate()
+        else:
+            img_name = f"{str(time.time())}.png"
+            merge_label_name = os.path.join("/var/lib/sedna/kb/unseen_samples", img_name)
+            os.makedirs(os.path.dirname(merge_label_name), exist_ok=True)
+            for pred in prediction:
+                pred = torch.from_numpy(pred).byte()
+                pred_colors = Colorize(n=self.val_args.num_class)(pred)
+                for pred_color in pred_colors:
+                    pred_color_image = ToPILImage()(pred_color)  # pre_colors.dtype = float64
+                    image_merge(data[0].get("image"), pred_color_image, merge_label_name)
         return (prediction, prediction)
 
     def evaluate(self, data, **kwargs):
@@ -384,7 +398,7 @@ def accuracy(y_true, y_pred, **kwargs):
     args.num_class = 31
     _, _, test_loader = make_data_loader(args, test_data=y_true)
     evaluator = Evaluator(args.num_class)
-   
+
     tbar = tqdm(test_loader, desc='\r')
     for i, (sample, img_path) in enumerate(tbar):
         if args.depth:
@@ -437,5 +451,5 @@ if __name__ == '__main__':
     # model.save("./models/e1_1f_1.pth")
 
 
-    
+
 
