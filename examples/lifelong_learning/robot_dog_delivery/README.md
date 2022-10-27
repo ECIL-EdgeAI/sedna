@@ -167,7 +167,6 @@ spec:
         - image: $edge_image
           name:  infer-worker
           imagePullPolicy: IfNotPresent
-          args: ["integration_main.py"]
           env:
             - name: "BIG_MODEL_IP"
               value: "94.74.91.114"
