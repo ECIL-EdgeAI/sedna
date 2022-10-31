@@ -36,7 +36,7 @@ class EdgeKnowledgeManagement(BaseKnowledgeManagement):
         self.local_unseen_save_url = FileOps.join_path(self.edge_output_url, "unseen_samples")
         if not os.path.exists(self.local_unseen_save_url):
             os.makedirs(self.local_unseen_save_url)
-        UnseenSampleUploadThread(self).start()
+        # UnseenSampleUploadThread(self).start()
 
     def update_kb(self, task_index):
         if isinstance(task_index, str):
@@ -120,7 +120,8 @@ class EdgeKnowledgeManagement(BaseKnowledgeManagement):
                 img = sample.get("image")
                 image_name = "{}.png".format(str(time.time()))
                 image_url = FileOps.join_path(self.local_unseen_save_url, image_name)
-                # img.save(image_url)
+                img.save(image_url)
+                os.rename(image_url, image_url+'.live.png')
             else:
                 image_name = os.path.basename(sample[0])
                 image_url = FileOps.join_path(self.local_unseen_save_url, image_name)

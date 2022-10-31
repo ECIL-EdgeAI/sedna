@@ -5,7 +5,7 @@ from tqdm import tqdm
 import time
 import torch
 from torchvision.transforms import ToPILImage
-from PIL import Image
+from PIL import Image, ImageDraw, ImageFont
 import cv2
 
 from dataloaders import make_data_loader
@@ -42,13 +42,13 @@ class Validator(object):
             self.model.to(f'cuda:{self.args.gpu_ids[0]}')
             cudnn.benchmark = True  # accelarate speed
         print('Model loaded successfully!')
-        
+
         # load model
         if self.args.weight_path is not None and os.path.exists(self.args.weight_path):
             self.new_state_dict = torch.load(self.args.weight_path, map_location=torch.device("cpu"))
             self.model = load_my_state_dict(self.model, self.new_state_dict['state_dict'])
 
-    def validate(self):        
+    def validate(self):
         self.model.eval()
         self.evaluator.reset()
         # tbar = tqdm(self.test_loader, desc='\r')
@@ -62,7 +62,7 @@ class Validator(object):
                 image = image.cuda()
                 if self.args.depth:
                     depth = depth.cuda()
-                    
+
             with torch.no_grad():
                 if self.args.depth:
                     output = self.model(image, depth)
@@ -105,15 +105,20 @@ class Validator(object):
                 pre_label_image.save(label_name)
 
         return predictions
-    
+
 def image_merge(image, label, save_name):
-    image = ToPILImage()(image.detach().cpu().byte())
-    image = image.resize(label.size, Image.BILINEAR)
+    # image = ToPILImage()(image.detach().cpu().byte())
+    image = image.resize(label.size)
 
     image = image.convert('RGBA')
     label = label.convert('RGBA')
-    image = Image.blend(image, label, 0.6)
-    # image.save(save_name)
+    image = Image.blend(image, label, 0.5)
+    img_font = ImageFont.truetype('msyhl.ttc', 50)
+    img_draw = ImageDraw.Draw(image)
+    text = "Seen image!"
+    img_draw.text((50, 50), text, font=img_font, fill=(25, 25, 12, 255))
+    image.save(save_name)
+    os.rename(save_name, save_name+'.live.png')
 
 def paint_trapezoid(color):
     input_height, input_width, _ = color.shape
