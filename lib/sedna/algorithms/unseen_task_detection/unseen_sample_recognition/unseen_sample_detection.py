@@ -26,6 +26,7 @@ class UnseenSampleDetection(threading.Thread):
 
     def __init__(self, edge_knowledge_management, **kwargs):
         self.get_environ_varia()
+        self.query_url = self.get_query_url()
         self.unseen_save_url = edge_knowledge_management.local_unseen_save_url
         self.check_time = 1
         self.current_status = "False" # 默认机器狗从未跌倒状态开始
@@ -37,10 +38,7 @@ class UnseenSampleDetection(threading.Thread):
             self.get_environ_varia()
             time.sleep(self.check_time)
             try:
-                check_request = requests.post(
-                    url=self.status_service_ip
-                )
-                status_dict = json.loads(check_request.text)
+                status_dict = self.query_status() # 查询机器狗状态并返回status_dict字典，两个键值if_fall和time_stamp
                 if status_dict["if_fall"] == "False":
                     continue
                 elif status_dict["if_fall"] == "True" and self.current_status == "False":
@@ -62,6 +60,20 @@ class UnseenSampleDetection(threading.Thread):
             except Exception as e:
                 continue
 
+    def query_status(self):
+        req = requests.get(
+            self.query_url
+        )
+        res = json.loads(req.text)
+        status_dict = {}
+        cur_state = res["property_data"]["basic_gait"]["value"]
+        status_dict["time_stamp"] = res["property_data"]["basic_gait"]["timestamp"]
+        if cur_state == "7" or cur_state == "6":
+            status_dict["if_fall"] = "True"
+        else:
+            status_dict["if_fall"] = "False"
+        return status_dict
+
     def get_index(self, samples, timestamp):
         # 在该函数中根据状态服务返回的时间戳判断摔倒时的时间戳，并返回
         # status_dict["time_stamp"]的格式： 16XXXXX.XX
@@ -77,13 +89,19 @@ class UnseenSampleDetection(threading.Thread):
 
     def get_environ_varia(self):
         try:
-            self.status_service_ip = os.environ["STATUS_IP"]
-        except:
-            self.status_service_ip = "127.0.0.1"
-        self.query_url = "http://" + self.status_service_ip + ":8000/robot_status/query/"
-        try:
             self.local_image_url = os.environ["IMAGE_TOPIC_URL"]
         except:
             self.local_image_url = "/tmp/"
+        return
 
+    def get_query_url(self):
+        try:
+            project_id = os.environ["project_id"]
+            robot_id = os.environ["robot_id"]
+            base_url = os.environ["base_url"]
+            query_url = "https://" + base_url + "/v1/" + str(project_id) + "/robooms/roboinstances/" + str(robot_id) + "/properties"
+        except:
+            self.status_service_ip = "127.0.0.1"
+            query_url = "http://" + self.status_service_ip + ":8000/robot_status/query/"
+        return query_url
 
