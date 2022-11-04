@@ -11,17 +11,16 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import time
 import threading
-import numpy as np
-import multiprocessing
-from cv_bridge import CvBridge
-from robosdk.core import Robot
-from robosdk.utils.context import Context
-from robosdk.utils.constant import GaitType
-from robosdk.msgs.sender.ros import RosMessagePublish
+import time
 
+from cv_bridge import CvBridge
 from ramp_detection.integration_interface import Estimator
+from robosdk.core import Robot
+from robosdk.msgs.sender.ros import RosMessagePublish
+from robosdk.utils.constant import GaitType
+from robosdk.utils.context import Context
+
 
 class Detection:
     def __init__(self):
@@ -39,32 +38,46 @@ class Detection:
         self.complete_change_upstair_time = None
         self.unseen_sample_threshold = 3
         self.unseen_sample_num = 0
+        self.last_img = None
+        self.last_dep = None
 
-    def run(self):
-        if not getattr(self.robot, "camera", ""):
-            return
+    def thread_push_to_cloud(self):
         while 1:
-            img, dep = self.robot.camera.get_rgb_depth()
-            if img is None:
-                continue
+            self.segment.push_to_cloud(self.last_img, None)
 
-            result = self.segment.predict(img, depth=dep)
+    def thread_infer_on_edge(self):
+        while 1:
+            result = self.segment.predict(self.last_img, depth=self.last_dep)
             if not result:
                 self.robot.logger.info("Unseen sample detected.")
                 # self.unseen_sample_num += 1
                 # if self.unseen_sample_num >= self.unseen_sample_threshold:
-                #    self.robot.logger.info("Stop in front of unseen sample!")  
+                #    self.robot.logger.info("Stop in front of unseen sample!")
                 #    for _ in range(3):
                 #        self.robot.navigation.stop()
                 #    self.unseen_sample_num = 0
                 continue
             # else:
             #    self.unseen_sample_num = 0
-                  
+
             if result == "no_ramp":
-                self.process_curb(result, img)
+                self.process_curb(result, self.last_img)
             else:
                 self.process_ramp(result)
+
+    def run(self):
+        if not getattr(self.robot, "camera", ""):
+            return
+
+        threading.Thread(name="infer_on_edge", target=self.thread_infer_on_edge())
+        threading.Thread(name="push_to_cloud", target=self.thread_push_to_cloud())
+
+        while 1:
+            img, dep = self.robot.camera.get_rgb_depth()
+            if img is None:
+                continue
+            self.last_img = img
+            self.last_dep = dep
 
     def process_curb(self, result, img):
         current_time = time.time()
@@ -123,8 +136,7 @@ class Detection:
             self.robot.navigation.stop()
             if self.complete_change_upstair_time is not None:
                 break
-        self.complete_change_upstair_time = None   
-
+        self.complete_change_upstair_time = None
 
 
 if __name__ == '__main__':

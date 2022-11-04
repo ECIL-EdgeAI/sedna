@@ -86,6 +86,16 @@ class Estimator:
 
         return result
 
+    def push_to_cloud(self, rgb, depth):
+        image = cv2.imencode('.jpg', rgb)[1].tobytes()
+        orig_h, orig_w, _ = rgb.shape
+        result = http_request(
+            self.endpoint, method="POST", files={ #TODO: 修改配置文件。
+                "image": ('rgb.jpg', image, "image/jpeg"),
+                # "depth": ('dep.jpg', depth, "image/jpeg"),
+            }
+        )
+
 if __name__ == '__main__':
     os.environ["BIG_MODEL_IP"] = "http://100.94.29.220"
     os.environ["BIG_MODEL_PORT"] = "30001"
