@@ -14,6 +14,7 @@
 
 import os
 import logging
+import sys
 
 import cv2
 import numpy as np
@@ -114,9 +115,12 @@ class Estimator:
         return bboxes
 
     def predict(self, data, **kwargs):
+        print("data size:", sys.getsizeof(data))
         img_data_np = np.array(data)
+        print("img_data_np size:", sys.getsizeof(img_data_np))
         with self.session.as_default():
             new_image = self.preprocess(img_data_np, self.input_shape)
+            print("new_image size:", sys.getsizeof(new_image))
             input_feed = self.create_input_feed(
                 self.session, new_image, img_data_np)
             output_fetch = self.create_output_fetch(self.session)

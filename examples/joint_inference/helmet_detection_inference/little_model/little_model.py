@@ -11,7 +11,8 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
+import os
+import sys
 import time
 import copy
 import logging
@@ -155,7 +156,11 @@ def main():
             nframe += 1
             continue
 
+        print("input_yuv size:", sys.getsizeof(input_yuv))
         img_rgb = cv2.cvtColor(input_yuv, cv2.COLOR_BGR2RGB)
+        print("img_rgb shape:", img_rgb.shape)
+        # img_rgb = cv2.resize(img_rgb, (21, 12), interpolation=cv2.INTER_CUBIC)
+        # print(img_rgb.shape)
         nframe += 1
         LOG.info(f"camera is open, current frame index is {nframe}")
         is_hard_example, final_result, edge_result, cloud_result = (
@@ -172,4 +177,8 @@ def main():
 
 
 if __name__ == '__main__':
+    super_big_model_ip = os.getenv("SUPER_BIG_MODEL_IP", default="")
+    print("super_big_model_ip is:", super_big_model_ip)
+    if super_big_model_ip != "":
+        os.environ["BIG_MODEL_IP"] = super_big_model_ip
     main()

@@ -37,7 +37,7 @@ spec:
         nodeName: chengfei-edge01
         dnsPolicy: ClusterFirstWithHostNet
         containers:
-          - image: poorunga/sedna-example-joint-inference-helmet-detection-little-arm64:v0.3.0
+          - image: poorunga/sedna-example-joint-inference-helmet-detection-little-arm64:v0.3.1
             imagePullPolicy: IfNotPresent
             name: little-model
             env: # user defined environments
@@ -51,6 +51,10 @@ spec:
                 value: "/data/hard_example_cloud_inference_output"
               - name: "hard_example_edge_inference_output"
                 value: "/data/hard_example_edge_inference_output"
+              - name: "SUPER_BIG_MODEL_IP"
+                value: "192.168.0.196"
+              - name: "INFERENCE_TIMEOUT"
+                value: "3699"
             resources: # user defined resources
               requests:
                 memory: 64M
@@ -73,8 +77,9 @@ spec:
     template:
       spec:
         nodeName: chengfei-node1
+        hostNetwork: true
         containers:
-          - image: poorunga/sedna-example-joint-inference-helmet-detection-big-arm64:v0.3.0
+          - image: poorunga/sedna-example-joint-inference-helmet-detection-big-arm64:v0.3.1
             name: big-model
             imagePullPolicy: IfNotPresent
             env: # user defined environments
@@ -83,3 +88,11 @@ spec:
             resources: # user defined resources
               requests:
                 memory: 2Gi
+            volumeMounts:
+              - mountPath: /data
+                name: data
+        volumes:
+        - name: data
+          hostPath:
+            path: /data
+            type: Directory

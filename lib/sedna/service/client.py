@@ -14,9 +14,11 @@
 
 import os
 import json
+import sys
 import time
 import asyncio
 import threading
+import datetime
 from copy import deepcopy
 
 import tenacity
@@ -45,7 +47,9 @@ def http_request(
     _maxTimeout = timeout if timeout else 300
     _method = "GET" if not method else method
     try:
+        print("time:", datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'), "before request, url:", url)
         response = requests.request(method=_method, url=url, **kwargs)
+        print("time:", datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'), " after request, url:", url)
         if response.status_code == 200:
             if no_decode:
                 return response
@@ -242,7 +246,11 @@ class ModelClient:
         json_data = deepcopy(kwargs)
         json_data.update({"data": x})
         _url = f"{self.endpoint}/predict"
-        return http_request(url=_url, method="POST", json=json_data)
+        print("x size:", sys.getsizeof(x))
+        print("json_data size:", sys.getsizeof(json_data))
+        timeout = os.getenv("INFERENCE_TIMEOUT", default=3600)
+        print("inference timeout:", timeout)
+        return http_request(url=_url, method="POST", timeout=timeout, json=json_data)
 
 
 class KBClient:

@@ -14,6 +14,8 @@
 
 import os
 import logging
+import sys
+import copy
 
 import cv2
 import numpy as np
@@ -21,6 +23,67 @@ import tensorflow as tf
 
 LOG = logging.getLogger(__name__)
 os.environ['BACKEND_TYPE'] = 'TENSORFLOW'
+class_names = ['person', 'helmet', 'helmet_on', 'helmet_off']
+
+
+def draw_boxes(img, bboxes, colors, text_thickness, box_thickness):
+    img_copy = copy.deepcopy(img)
+
+    line_type = 2
+    #  get color code
+    colors = colors.split(",")
+    colors_code = []
+    for color in colors:
+        if color == 'green':
+            colors_code.append((0, 255, 0))
+        elif color == 'blue':
+            colors_code.append((255, 0, 0))
+        elif color == 'yellow':
+            colors_code.append((0, 255, 255))
+        else:
+            colors_code.append((0, 0, 255))
+
+    label_dict = {i: label for i, label in enumerate(class_names)}
+
+    for bbox in bboxes:
+        if float("inf") in bbox or float("-inf") in bbox:
+            continue
+        label = int(bbox[5])
+        score = "%.2f" % round(bbox[4], 2)
+        text = label_dict.get(label) + ":" + score
+        p1 = (int(bbox[1]), int(bbox[0]))
+        p2 = (int(bbox[3]), int(bbox[2]))
+        if (p2[0] - p1[0] < 1) or (p2[1] - p1[1] < 1):
+            continue
+        try:
+            cv2.rectangle(img_copy, p1[::-1], p2[::-1], colors_code[label],
+                          box_thickness)
+            cv2.putText(img_copy, text, (p1[1], p1[0] + 20 * (label + 1)),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 0, 0),
+                        text_thickness, line_type)
+        except TypeError as err:
+            # error message from pyopencv,  cv2.circle only can accept centre
+            # coordinates precision up to float32. If the coordinates are in
+            # float64, it will throw this error.
+            LOG.warning(f"Draw box fail: {err}")
+    return img_copy
+
+
+def output_deal(
+        final_result,
+        nframe,
+        img_rgb
+):
+    # save and show image
+    img_rgb = np.array(img_rgb).astype(np.float32)
+    # cv2.imwrite(f"/data/tmp_222-{nframe}.jpeg", img_rgb)
+    img_rgb = cv2.cvtColor(img_rgb, cv2.COLOR_RGB2BGR)
+    collaboration_frame = draw_boxes(img_rgb, final_result,
+                                     colors="green,blue,yellow,red",
+                                     text_thickness=None,
+                                     box_thickness=None)
+
+    cv2.imwrite(f"/data/tmp_{nframe}.jpeg", collaboration_frame)
 
 
 def preprocess(image, input_shape):
@@ -194,6 +257,7 @@ class Estimator:
         self.input_shape = [544, 544]
         self.create_input_feed = create_input_feed
         self.create_output_fetch = create_output_fetch
+        self.v_num = 0
 
     def load(self, model_url=""):
         with self.session.as_default():
@@ -211,11 +275,18 @@ class Estimator:
         LOG.info("Import model from pb end .......")
 
     def predict(self, data, **kwargs):
+        print("data size:", sys.getsizeof(data))
         img_data_np = np.array(data)
+        print("img_data_np shape:", img_data_np.shape)
         new_image, shapes = preprocess(img_data_np, self.input_shape)
+        print("new_image size:", sys.getsizeof(new_image))
+
+        self.v_num += 1
         with self.session.as_default():
             input_feed = self.create_input_feed(
                 self.session, new_image, img_data_np)
             output_fetch = self.create_output_fetch(self.session)
             output = self.session.run(output_fetch, input_feed)
-            return postprocess(output, shapes)
+            bbox = postprocess(output, shapes)
+            output_deal(bbox, self.v_num, data)
+            return bbox
