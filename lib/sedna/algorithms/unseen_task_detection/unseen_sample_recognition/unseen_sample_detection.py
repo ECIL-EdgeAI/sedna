@@ -5,8 +5,6 @@ import requests
 import threading
 
 from sedna.common.file_ops import FileOps
-from sedna.common.config import Context
-from sedna.datasources import BaseDataSource
 from sedna.common.class_factory import ClassFactory, ClassType
 
 __all__ = ('UnseenSampleDetection', )

@@ -51,7 +51,6 @@ func (uc *UpstreamController) syncEdgeUpdate() {
 		}
 
 		update, err := uc.messageLayer.ReceiveResourceUpdate()
-		//klog.Infof("================ ReceiveResourceUpdate.Content: %s", update.Content)
 		if err == nil {
 			err = uc.checkOperation(update.Operation)
 		}

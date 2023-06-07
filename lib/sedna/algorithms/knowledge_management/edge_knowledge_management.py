@@ -1,17 +1,23 @@
 import os
 import time
+import json
+from datetime import datetime
 import tempfile
 import threading
+import uuid
+from queue import Queue
 
+from watchdog.events import *
 from sedna.common.log import LOGGER
-from sedna.common.config import Context
+from sedna.common.config import Context, BaseConfig
 from sedna.common.class_factory import ClassType, ClassFactory
 from sedna.common.file_ops import FileOps
-from sedna.common.constant import KBResourceConstant, K8sResourceKindStatus
+from sedna.common.constant import KBResourceConstant
 
 from .base_knowledge_management import BaseKnowledgeManagement
 
 __all__ = ('EdgeKnowledgeManagement', )
+
 
 @ClassFactory.register(ClassType.KM)
 class EdgeKnowledgeManagement(BaseKnowledgeManagement):
@@ -29,14 +35,22 @@ class EdgeKnowledgeManagement(BaseKnowledgeManagement):
     """
 
     def __init__(self, config, seen_estimator, unseen_estimator, **kwargs):
-        super(EdgeKnowledgeManagement, self).__init__(config, seen_estimator, unseen_estimator)
+        super(EdgeKnowledgeManagement, self).__init__(
+            config, seen_estimator, unseen_estimator)
 
-        self.edge_output_url = Context.get_parameters("edge_output_url", KBResourceConstant.EDGE_KB_DIR.value)
-        self.task_index = FileOps.join_path(self.edge_output_url, KBResourceConstant.KB_INDEX_NAME.value)
-        self.local_unseen_save_url = FileOps.join_path(self.edge_output_url, "unseen_samples")
-        if not os.path.exists(self.local_unseen_save_url):
-            os.makedirs(self.local_unseen_save_url)
-        UnseenSampleUploadThread(self).start()
+        self.edge_output_url = Context.get_parameters(
+            "edge_output_url", KBResourceConstant.EDGE_KB_DIR.value)
+        self.task_index = FileOps.join_path(
+            self.edge_output_url, KBResourceConstant.KB_INDEX_NAME.value)
+        self.local_unseen_save_url = FileOps.join_path(self.edge_output_url,
+                                                       "unseen_samples")
+
+        self.pinned_service_start = False
+        self.unseen_sample_observer = None
+        self.current_index_version = None
+        self.lastest_index_version = None
+
+        self.unseen_sample_queue = Queue(maxsize=100)
 
     def update_kb(self, task_index):
         if isinstance(task_index, str):
@@ -55,6 +69,8 @@ class EdgeKnowledgeManagement(BaseKnowledgeManagement):
             seen_task_index, task_type=self.seen_task_key)
         unseen_extractor, unseen_task_groups = self.save_task_index(
             unseen_task_index, task_type=self.unseen_task_key)
+        meta_estimators = self.save_meta_estimators(
+            task_index["meta_estimators"])
 
         task_info = {
             self.seen_task_key: {
@@ -65,10 +81,15 @@ class EdgeKnowledgeManagement(BaseKnowledgeManagement):
                 self.task_group_key: unseen_task_groups,
                 self.extractor_key: unseen_extractor
             },
-            "created_time": task_index.get("created_time", str(time.time()))
+            "meta_estimators": meta_estimators,
+            "create_time": task_index.get("create_time", str(time.time()))
         }
 
+        self.current_index_version = str(task_info.get("create_time"))
+        self.lastest_index_version = self.current_index_version
+
         fd, name = tempfile.mkstemp()
+        os.close(fd)
         FileOps.dump(task_info, name)
         return FileOps.upload(name, self.task_index)
 
@@ -109,26 +130,35 @@ class EdgeKnowledgeManagement(BaseKnowledgeManagement):
 
         return extractor, task_groups
 
-    def save_unseen_samples(self, samples, post_process):
-        if callable(post_process):
-            # customized sample saving function
-            post_process(samples.x, self.local_unseen_save_url)
-            return
+    def save_meta_estimators(self, meta_estimator_index):
+        meta_estimators = {}
+        for meta_estimator_name, meta_estimator in meta_estimator_index.items():
+            meta_estimator_url = FileOps.join_path(
+                self.edge_output_url, "meta_estimators",
+                os.path.basename(meta_estimator))
 
-        for sample in samples.x:
+            meta_estimator = FileOps.download(
+                meta_estimator, meta_estimator_url)
+            meta_estimators[meta_estimator_name] = meta_estimator
+        return meta_estimators
+
+    def save_unseen_samples(self, samples, **kwargs):
+        ood_scores = kwargs.get("unseen_params")[0]
+        for i, sample in enumerate(samples.x):
+            sample_id = str(uuid.uuid4())
             if isinstance(sample, dict):
                 img = sample.get("image")
-                image_name = "{}.png".format(str(time.time()))
-                image_url = FileOps.join_path(self.local_unseen_save_url, image_name)
-                img.save(image_url)
             else:
-                image_name = os.path.basename(sample[0])
-                image_url = FileOps.join_path(self.local_unseen_save_url, image_name)
-                FileOps.upload(sample[0], image_url, clean=False)
+                img = sample[0]
+            unseen_sample_info = (sample_id, img, ood_scores[i])
+            self.unseen_sample_queue.put(unseen_sample_info)
 
-        LOGGER.info(f"Unseen sample uploading completes.")
+    def start_services(self):
+        UnseenSampleThread(self.unseen_sample_queue).start()
+        ModelHotUpdateThread(self).start()
 
-class ModelLoadingThread(threading.Thread):
+
+class ModelHotUpdateThread(threading.Thread):
     """Hot task index loading with multithread support"""
     MODEL_MANIPULATION_SEM = threading.Semaphore(1)
 
@@ -141,78 +171,109 @@ class ModelLoadingThread(threading.Thread):
         )
         if model_check_time < 1:
             LOGGER.warning("Catch an abnormal value in "
-                           "`MODEL_POLL_PERIOD_SECONDS`, fallback with 60")
-            model_check_time = 60
-        self.version = None
+                           "`MODEL_POLL_PERIOD_SECONDS`, fallback with 30")
+            model_check_time = 30
         self.edge_knowledge_management = edge_knowledge_management
         self.check_time = model_check_time
         self.callback = callback
-        task_index = edge_knowledge_management.task_index
-        if FileOps.exists(task_index):
-            self.version = FileOps.load(task_index).get("create_time")
 
-        super(ModelLoadingThread, self).__init__()
+        super(ModelHotUpdateThread, self).__init__()
+
+        LOGGER.info(f"Model hot update service starts.")
 
     def run(self):
         while True:
             time.sleep(self.check_time)
-            latest_task_index = Context.get_parameters("MODEL_URLS", None)
-            if not self.version:
+            if not self.edge_knowledge_management.current_index_version:
                 continue
+
+            latest_task_index = Context.get_parameters("MODEL_URLS")
             if not latest_task_index:
                 continue
             latest_task_index = FileOps.load(latest_task_index)
-            latest_version = str(latest_task_index.get("create_time"))
+            self.edge_knowledge_management.lastest_index_version = str(
+                latest_task_index.get("create_time"))
 
-            if latest_version == self.version:
-                continue
-            self.version = latest_version
-            with self.MODEL_MANIPULATION_SEM:
-                LOGGER.info(
-                    f"Update model start with version {self.version}")
-                try:
-                    task_index_url = \
-                        FileOps.dump(latest_task_index, self.edge_knowledge_management.task_index)
-                    # TODO: update local kb with the latest index.pkl
-                    self.edge_knowledge_management.update_kb(task_index_url)
 
-                    status = K8sResourceKindStatus.COMPLETED.value
-                    LOGGER.info(f"Update task index complete "
-                                f"with version {self.version}")
-                except Exception as e:
-                    LOGGER.error(f"fail to update task index: {e}")
-                    status = K8sResourceKindStatus.FAILED.value
-                if self.callback:
-                    self.callback(
-                        task_info=None, status=status, kind="deploy"
-                    )
+class UnseenSampleThread(threading.Thread):
+    def __init__(self, unseen_sample_queue):
+        self.check_time = 1
+        self.unseen_sample_queue = unseen_sample_queue
+        local_unseen_dir = os.path.join(BaseConfig.data_path_prefix,
+                                        "unseen_samples")
+        self.unseen_save_url = Context.get_parameters("unseen_save_url",
+                                                      local_unseen_dir)
+        local_metadata_dir = os.path.join(BaseConfig.data_path_prefix,
+                                          "metadata")
+        self.metadata_dir = Context.get_parameters("metadata_url",
+                                                   local_metadata_dir)
 
-class UnseenSampleUploadThread(threading.Thread):
-    MODEL_MANIPULATION_SEM = threading.Semaphore(1)
+        if not FileOps.is_remote(self.unseen_save_url):
+            os.makedirs(self.unseen_save_url, exist_ok=True)
+        if not FileOps.is_remote(self.metadata_dir):
+            os.makedirs(self.metadata_dir, exist_ok=True)
 
-    def __init__(self, edge_knowledge_management):
-        self.local_unseen_save_url = edge_knowledge_management.local_unseen_save_url
-        self.unseen_save_url = Context.get_parameters("unseen_save_url", "/tmp")
-        self.check_time = 5
-        self.current_sample_num = 0
-        super(UnseenSampleUploadThread, self).__init__()
+        self.unseen_sample_metadata = self.init_unseen_metadata_template()
+        super(UnseenSampleThread, self).__init__()
+        LOGGER.info(f"Unseen sample upload service starts.")
 
     def run(self):
         while True:
             time.sleep(self.check_time)
-            if not self.local_unseen_save_url:
-                continue
-            samples = os.listdir(self.local_unseen_save_url)
-            latest_num = len(samples)
-            if latest_num <= self.current_sample_num:
-                continue
+            sample_id, img, ood_score = self.unseen_sample_queue.get()
+            unseen_sample_url = self.upload_unseen_sample(img)
+            self.upload_meta_data(sample_id, ood_score, unseen_sample_url)
+            LOGGER.info(f"Upload unseen sample to {unseen_sample_url}")
+            self.unseen_sample_queue.task_done()
 
-            samples.sort()
-            for sample in samples[self.current_sample_num:]:
-                local_sample_url = FileOps.join_path(self.local_unseen_save_url, sample)
-                dest_sample_url = FileOps.join_path(self.unseen_save_url, sample)
-                FileOps.upload(local_sample_url, dest_sample_url, clean=False)
+    def init_unseen_metadata_template(self):
+        unseen_sample_metadata = {
+            "sample_id": "",
+            "sample_url": "",
+            "sample_timestamp": "",
+            "unseen_sample_info": {
+                "unseen_task_recognition": "",
+                "unseen_task_processing": "急停并等待人工介入"
+            }
+        }
+        return unseen_sample_metadata
 
-            self.current_sample_num = latest_num
+    def upload_unseen_sample(self, img):
+        if not isinstance(img, str):
+            image_name = "{}.png".format(str(time.time()))
+            image_url = FileOps.join_path("/tmp", image_name)
+            img.save(image_url)
+        else:
+            image_name = os.path.basename(img)
+            image_url = FileOps.join_path("/tmp", image_name)
+            FileOps.upload(img, image_url, clean=False)
 
+        return FileOps.upload(image_url,
+                              os.path.join(self.unseen_save_url, image_name))
 
+    def upload_meta_data(self, sample_id, ood_score, unseen_sample_url,
+                         metadata_suffix="json"):
+        sample_name = os.path.split(unseen_sample_url)[-1]
+        sample_name = os.path.splitext(sample_name)[0]
+        sample_timestamp = str(datetime.now())
+
+        self.unseen_sample_metadata["sample_id"] = sample_id
+        self.unseen_sample_metadata["sample_url"] = unseen_sample_url
+        self.unseen_sample_metadata["sample_timestamp"] = sample_timestamp
+        self.unseen_sample_metadata["unseen_sample_info"]["unseen_task_recognition"] = ood_score
+
+        fd, name = tempfile.mkstemp()
+        os.close(fd)
+
+        if metadata_suffix == "json":
+            metadata_json_str = json.dumps(
+                self.unseen_sample_metadata, indent=4, ensure_ascii=False)
+            with open(name, 'w') as json_file:
+                json_file.write(metadata_json_str)
+        else:
+            FileOps.dump(self.unseen_sample_metadata, name)
+
+        metadata_url = FileOps.join_path(
+            self.metadata_dir,
+            "{}.metadata.{}".format(sample_name, metadata_suffix))
+        FileOps.upload(name, metadata_url)

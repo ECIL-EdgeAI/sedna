@@ -17,9 +17,6 @@
 import json
 import time
 
-import pandas as pd
-from sklearn import metrics as sk_metrics
-
 from sedna.datasources import BaseDataSource
 from sedna.backend import set_backend
 from sedna.common.log import LOGGER
@@ -377,14 +374,14 @@ class SeenTaskLearning:
 
         feedback = {}
         for i, task in enumerate(task_groups):
-            LOGGER.info(f"MTL Train start {i} : {task.entry}")
+            LOGGER.info(f"MTL update start {i} : {task.entry}")
             for _task in task.tasks:
                 model_obj = set_backend(estimator=self.base_model)
                 model_obj.load(_task.model)
-                res = model_obj.train(train_data=task.samples)
+                model_obj.train(train_data=task.samples)
                 model_path = model_obj.save(model_name=f"{task.entry}.model")
                 model = Model(index=i, entry=task.entry,
-                              model=model_path, result=res)
+                              model=model_path, result={})
                 break
 
             model.meta_attr = [t.meta_attr for t in task.tasks]
@@ -394,7 +391,7 @@ class SeenTaskLearning:
             self.seen_task_groups.append(task)
 
         task_index = {
-            self.extractor_key: {"real": 0, "sim": 1},
+            self.extractor_key: {"front": 0, "garden": 1},
             self.task_group_key: self.seen_task_groups
         }
 
@@ -410,7 +407,8 @@ class SeenTaskLearning:
         task_index : str or Dict
             task index file path, default self.task_index_url.
         """
-        assert task_index, "Task index can't be None."
+        if not task_index:
+            raise Exception("Task index does not exist!")
 
         if isinstance(task_index, str):
             task_index = FileOps.load(task_index)
@@ -450,8 +448,7 @@ class SeenTaskLearning:
 
         data, mappings = self._task_allocation(samples=data)
         samples, models = self._task_remodeling(samples=data,
-                                                mappings=mappings
-                                                )
+                                                mappings=mappings)
 
         callback = None
         if post_process:
@@ -464,7 +461,7 @@ class SeenTaskLearning:
                 continue
             if isinstance(m.model, str):
                 evaluator = set_backend(estimator=self.base_model)
-                # evaluator.load(m.model)
+                evaluator.load(m.model)
             else:
                 evaluator = m.model
             pred = evaluator.predict(df.x, **kwargs)
@@ -504,6 +501,10 @@ class SeenTaskLearning:
         tasks_detail : List[Object]
             all metric results in each task.
         """
+
+        import pandas as pd
+        from sklearn import metrics as sk_metrics
+
         result, tasks = self.predict(data, **kwargs)
         m_dict = {}
 

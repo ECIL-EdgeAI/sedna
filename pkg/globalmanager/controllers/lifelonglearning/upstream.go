@@ -20,7 +20,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"k8s.io/klog/v2"
 	"strings"
 
 	sednav1 "github.com/kubeedge/sedna/pkg/apis/sedna/v1alpha1"
@@ -120,7 +119,6 @@ func (c *Controller) updateFromEdge(name, namespace, operation string, content [
 	}
 
 	condDataBytes, _ := json.Marshal(&condData)
-	klog.Infof("================ condDataBytes is %s", condDataBytes)
 
 	cond := sednav1.LLJobCondition{
 		Status:             v1.ConditionTrue,

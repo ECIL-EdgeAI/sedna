@@ -25,6 +25,7 @@ class BackendBase:
         self.framework = ""
         self.estimator = estimator
         self.use_cuda = True if kwargs.get("use_cuda") else False
+        self.use_npu = True if kwargs.get("use_npu") else False
         self.fine_tune = fine_tune
         self.model_save_path = kwargs.get("model_save_path") or "/tmp"
         self.default_name = kwargs.get("model_name")
@@ -35,7 +36,9 @@ class BackendBase:
         if self.default_name:
             return self.default_name
         model_postfix = {"pytorch": [".pth", ".pt"],
-                         "keras": ".pb", "tensorflow": ".pb"}
+                         "keras": ".pb",
+                         "tensorflow": ".pb",
+                         "mindspore": ".ckpt"}
         continue_flag = "_finetune_" if self.fine_tune else ""
         post_fix = model_postfix.get(self.framework, ".pkl")
         return f"model{continue_flag}{self.framework}{post_fix}"
@@ -59,7 +62,7 @@ class BackendBase:
         return fit_method(*args, **varkw)
 
     def update(self, *args, **kwargs):
-        """update model by training."""
+        """Update model."""
         if callable(self.estimator):
             varkw = self.parse_kwargs(self.estimator, **kwargs)
             self.estimator = self.estimator(**varkw)
@@ -95,7 +98,7 @@ class BackendBase:
             model_path = model_url
         return model_path
 
-    def model_info(self, model, relpath=None, result=None):
+    def model_info(self, model, relpath=None, result=None, **kwargs):
         _, _type = os.path.splitext(model)
         if relpath:
             _url = FileOps.remove_path_prefix(model, relpath)

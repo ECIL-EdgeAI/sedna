@@ -1,0 +1,111 @@
+kubectl $action -f - <<EOF
+apiVersion: sedna.io/v1alpha1
+kind: LifelongLearningJob
+metadata:
+  name: $job_name
+spec:
+  dataset:
+    name: "lifelong-dataset-robo"
+    trainProb: 0.8
+  trainSpec:
+    template:
+      spec:
+        nodeName: $TRAIN_NODE
+        dnsPolicy: ClusterFirstWithHostNet
+        containers:
+          - image: $cloud_image
+            name:  train-worker
+            imagePullPolicy: IfNotPresent
+            args: ["train.py"]
+            env:
+              - name: "train_ratio"
+                value: "0.9"
+            resources:
+              limits:
+                cpu: 6
+                memory: 6Gi
+              requests:
+                cpu: 4
+                memory: 12Gi
+            volumeMounts:
+            - mountPath: /dev/shm
+              name: cache-volume
+        volumes:
+        - emptyDir:
+            medium: Memory
+            sizeLimit: 128Mi
+          name: cache-volume
+    trigger:
+      checkPeriodSeconds: 30
+      timer:
+        start: 00:00
+        end: 24:00
+      condition:
+        operator: ">"
+        threshold: 100
+        metric: num_of_samples
+  evalSpec:
+    template:
+      spec:
+        nodeName: $EVAL_NODE
+        dnsPolicy: ClusterFirstWithHostNet
+        containers:
+          - image: $cloud_image
+            name:  eval-worker
+            imagePullPolicy: IfNotPresent
+            args: ["evaluate.py"]
+            env:
+              - name: "operator"
+                value: "<"
+              - name: "model_threshold"  # Threshold for filtering deploy models
+                value: "0"
+            resources:
+              limits:
+                cpu: 6
+                memory: 6Gi
+              requests:
+                cpu: 4
+                memory: 10Gi
+  deploySpec:
+    template:
+      spec:
+        nodeName: $INFER_NODE
+        dnsPolicy: ClusterFirstWithHostNet
+        hostNetwork: true
+        containers:
+        - image: $edge_image
+          name:  infer-worker
+          imagePullPolicy: IfNotPresent
+          args: ["robo_infer_service.py"]
+          env:
+            - name: "unseen_save_url"
+              value: "s3://kubeedge/sedna-robo/unseen_samples/"
+            - name: "OOD_model"
+              value: "s3://kubeedge/sedna-robo/models/lr_model.model"
+            - name: "OOD_thresh"
+              value: "0.2"
+            - name: "robo_skill"
+              value: "ramp_detection"
+            - name: "ramp_detection"
+              value: "s3://kubeedge/sedna-robo/models/ramp_train1_200.pth"
+            - name: "curb_detection"
+              value: "s3://kubeedge/sedna-robo/models/2048x1024_80.pth"
+            - name: "stage"
+              value: "inference"
+            - name: "INFERENCE_RESULT_DIR"
+              value: "/home/data/infer_results"
+          volumeMounts:
+            - name: inferdata
+              mountPath: /home/data/infer_results
+          resources:  # user defined resources
+            limits:
+              cpu: 6
+              memory: 6Gi
+            requests:
+              cpu: 4
+              memory: 10Gi
+        volumes:   # user defined volumes
+          - name: inferdata
+            hostPath:
+              path:  /data/infer_results
+              type: DirectoryOrCreate
