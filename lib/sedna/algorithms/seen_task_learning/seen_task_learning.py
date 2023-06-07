@@ -443,6 +443,9 @@ class SeenTaskLearning:
         tasks : List
             tasks assigned to each sample.
         """
+        if kwargs.get("seen_params"):
+            return kwargs.get("seen_params")
+
         if not (self.seen_models and self.seen_extractor):
             self.load(kwargs.get("task_index", None))
 

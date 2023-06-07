@@ -7,7 +7,7 @@ import os
 # os.environ["metadata_url"] = "s3://kubeedge/sedna-robo/metadata/"
 # os.environ["OUTPUT_URL"] = "s3://kubeedge/sedna-robo/"
 
-# os.environ["OOD_thresh"] = "0.01"
+# os.environ["OOD_thresh"] = "0.2"
 # os.environ["ramp_detection"] = "/home/lsq/RFNet/models/garden_2_GPU.pth"
 
 from PIL import Image
