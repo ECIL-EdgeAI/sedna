@@ -45,7 +45,7 @@ class KBResourceConstant(Enum):
     Knowledge used constant
     """
 
-    MIN_TRAIN_SAMPLE = 10
+    MIN_TRAIN_SAMPLE = 1
     KB_INDEX_NAME = "index.pkl"
     TASK_EXTRACTOR_NAME = "task_attr_extractor.pkl"
     SEEN_TASK = "seen_task"
