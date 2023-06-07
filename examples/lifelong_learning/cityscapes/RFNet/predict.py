@@ -104,5 +104,6 @@ def predict():
 
         count += test_data_num
 
+
 if __name__ == '__main__':
     predict()

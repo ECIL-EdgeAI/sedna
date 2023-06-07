@@ -23,7 +23,6 @@ RUN pip install scikit-image
 
 RUN apt-get install wget -y
 RUN wget -P /root/.cache/torch/hub/checkpoints/ --no-check-certificate https://download.pytorch.org/models/resnet18-5c106cde.pth
-# RUN wget -P /var/lib/sedna/kb/ --no-check-certificate https://kubeedge.obs.cn-north-1.myhuaweicloud.com/sedna-robo/models/index.pkl
 
 ENV PYTHONPATH "/home/lib"
 
