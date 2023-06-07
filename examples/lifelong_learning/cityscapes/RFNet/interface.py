@@ -168,6 +168,7 @@ class Estimator:
 
     def load(self, model_url, **kwargs):
         if model_url:
+            LOGGER.info(f"Load model from {model_url}")
             self.validator.new_state_dict = \
                 torch.load(model_url,
                            map_location="cpu" if not self.cuda else None)

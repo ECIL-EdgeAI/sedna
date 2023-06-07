@@ -25,7 +25,7 @@ from sedna.algorithms.seen_task_learning.artifact import Model, Task
 __all__ = ('OodIdentification',)
 
 
-@ClassFactory.register(ClassType.UTD, alias="OodIdentification")
+@ClassFactory.register(ClassType.UTD)
 class OodIdentification:
     """
     Corresponding to `OodIdentification`
@@ -122,7 +122,8 @@ class OodIdentification:
                 continue
             if isinstance(m.model, str):
                 evaluator = set_backend(estimator=self.base_model)
-                evaluator.load(m.model)
+                if not self.backup_model:
+                    evaluator.load(m.model)
             else:
                 evaluator = m.model
             InD_list, OoD_list, pred, ood_scores = self.ood_predict(

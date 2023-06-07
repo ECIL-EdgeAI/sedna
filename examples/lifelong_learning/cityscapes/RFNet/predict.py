@@ -7,9 +7,8 @@ import os
 # os.environ["metadata_url"] = "s3://kubeedge/sedna-robo/metadata/"
 # os.environ["OUTPUT_URL"] = "s3://kubeedge/sedna-robo/"
 
-# os.environ["OOD_thresh"] = "0.3"
+# os.environ["OOD_thresh"] = "0.01"
 # os.environ["ramp_detection"] = "/home/lsq/RFNet/models/garden_2_GPU.pth"
-
 
 from PIL import Image
 from sedna.datasources import BaseDataSource
@@ -39,8 +38,8 @@ def postprocess(samples):
 def init_ll_job():
     robo_skill = Context.get_parameters("robo_skill", "ramp_detection")
     estimator = Estimator(num_class=31,
-                          weight_path=Context.get_parameters(robo_skill),
                           save_predicted_image=True,
+                          weight_path=Context.get_parameters(robo_skill),
                           merge=True)
 
     task_allocation = {
