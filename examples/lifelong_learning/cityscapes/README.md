@@ -185,6 +185,8 @@ spec:
               value: "s3://kubeedge/sedna-robo/unseen_samples/"
             - name: "metadata_url"
               value: "s3://kubeedge/sedna-robo/metadata/"
+            - name: "OOD_model"
+              value: "s3://kubeedge/sedna-robo/models/garden.model"
             - name: "OOD_thresh"
               value: "0.1"
             - name: "robo_skill"

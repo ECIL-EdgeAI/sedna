@@ -9,6 +9,7 @@ from PIL import Image
 import cv2
 import torch.backends.cudnn as cudnn
 from sedna.common.log import LOGGER
+from sedna.common.file_ops import FileOps
 
 from dataloaders import make_data_loader
 from dataloaders.utils import Colorize
@@ -46,8 +47,9 @@ class Validator(object):
             cudnn.benchmark = True  # accelarate speed
 
         # load model
-        if self.args.weight_path is not None and os.path.exists(
-                self.args.weight_path):
+        if self.args.weight_path is not None:
+            if FileOps.is_remote(self.args.weight_path):
+                self.args.weight_path = FileOps.download(self.args.weight_path)
             self.new_state_dict = torch.load(self.args.weight_path, \
                 map_location="cpu" if not self.args.cuda else None)
             self.model = load_my_state_dict(

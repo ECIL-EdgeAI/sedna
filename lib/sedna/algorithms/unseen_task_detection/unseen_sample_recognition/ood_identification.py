@@ -48,7 +48,7 @@ class OodIdentification:
         self.task_group_key = KBResourceConstant.TASK_GROUPS.value
         self.extractor_key = KBResourceConstant.EXTRACTOR.value
 
-        self.base_model = kwargs.get("base_model")(num_class=31)
+        self.base_model = kwargs.get("base_model") # (num_class=31)
         self.backup_model = kwargs.get('OOD_backup_model')
         if not self.backup_model:
             self.seen_extractor = task_index.get(
@@ -122,7 +122,7 @@ class OodIdentification:
                 continue
             if isinstance(m.model, str):
                 evaluator = set_backend(estimator=self.base_model)
-                if not self.backup_model:
+                if self.backup_model is None:
                     evaluator.load(m.model)
             else:
                 evaluator = m.model
@@ -138,6 +138,75 @@ class OodIdentification:
         res = self._inference_integrate(tasks)
         return (seen_task_samples, res, tasks), \
             (unseen_task_samples, OOD_scores)
+
+    def ood_predict(self, evaluator, samples, **kwargs):
+        data = self.preprocess_func(samples)
+        evaluator.estimator.validator.test_loader = DataLoader(
+            data,
+            batch_size=1,
+            shuffle=False,
+            pin_memory=True)
+        seg_model = evaluator.estimator.validator.model
+        data_loader = evaluator.estimator.validator.test_loader
+
+        OoD_list, InD_list = [], []
+        predictions = []
+        ood_scores = []
+
+        seg_model.eval()
+        evaluator.estimator.validator.evaluator.reset()
+        for i, (sample, _) in enumerate(data_loader):
+            image = sample["image"]
+            if self.cuda:
+                image = image.cuda()
+            with torch.no_grad():
+                _, output = seg_model(image)
+            if self.cuda:
+                torch.cuda.synchronize()
+            pred = torch.max(output, 1)[1]
+
+            glcm_features = self.calculate_glcm_features(
+                pred.squeeze(0).cpu().numpy().astype(np.uint8))
+            glcm_score = glcm_features['homogeneity']
+            if glcm_score < self.glcm_thresh:
+                LOGGER.info(f'glcm homogeneity score:{glcm_score}')
+                OoD_list.append(samples[i])
+                continue
+
+            maxLogit = torch.max(output, 1)[0].unsqueeze(1)
+            maxLogit = self.batch_min_max(maxLogit)
+            softmaxDistance = self.get_softmaxDistance(output).unsqueeze(1)
+            cosDistanceLoss = self.get_cosDistanceLoss(output, pred)
+
+            maxLogit, softmaxDistance = maxLogit.mean(1, keepdim=True), \
+                softmaxDistance.mean(1, keepdim=True)
+
+            origin_shape = maxLogit.shape
+            maxLogit, softmaxDistance, cosDistanceLoss = maxLogit.flatten(), \
+                softmaxDistance.flatten(), cosDistanceLoss.flatten()
+
+            effec_shape = maxLogit.shape[0]
+            temp_x = torch.cat([maxLogit.reshape(effec_shape, 1),
+                                softmaxDistance.reshape(effec_shape, 1),
+                                cosDistanceLoss.reshape(effec_shape, 1)],
+                               dim=1)
+
+            OOD_pred = self.ood_model.predict(temp_x.cpu().numpy())
+            OOD_pred_show = OOD_pred + 1
+            OOD_pred_show = OOD_pred_show.reshape(origin_shape)
+
+            for j in range(origin_shape[0]):
+                OOD_score = (OOD_pred_show[j] == 1).sum(
+                ) / (OOD_pred_show[j] != 0).sum()
+                LOGGER.info(f'OOD_score:{OOD_score}')
+                if OOD_score > self.OOD_thresh:
+                    OoD_list.append(samples[i])
+                    ood_scores.append(OOD_score)
+                else:
+                    InD_list.append(samples[i])
+                    predictions.append(pred.data.cpu().numpy())
+
+        return InD_list, OoD_list, predictions, ood_scores
 
     def train(self, **kwargs):
         ood_data_path = os.path.join(BaseConfig.data_path_prefix, 'ood_data')
@@ -329,75 +398,6 @@ class OodIdentification:
 
         rus = RandomUnderSampler(random_state=0)
         return rus.fit_resample(train_x, train_y)
-
-    def ood_predict(self, evaluator, samples, **kwargs):
-        data = self.preprocess_func(samples)
-        evaluator.estimator.validator.test_loader = DataLoader(
-            data,
-            batch_size=1,
-            shuffle=False,
-            pin_memory=True)
-        seg_model = evaluator.estimator.validator.model
-        data_loader = evaluator.estimator.validator.test_loader
-
-        OoD_list, InD_list = [], []
-        predictions = []
-        ood_scores = []
-
-        seg_model.eval()
-        evaluator.estimator.validator.evaluator.reset()
-        for i, (sample, _) in enumerate(data_loader):
-            image = sample["image"]
-            if self.cuda:
-                image = image.cuda()
-            with torch.no_grad():
-                _, output = seg_model(image)
-            if self.cuda:
-                torch.cuda.synchronize()
-            pred = torch.max(output, 1)[1]
-
-            glcm_features = self.calculate_glcm_features(
-                pred.squeeze(0).cpu().numpy().astype(np.uint8))
-            glcm_score = glcm_features['homogeneity']
-            if glcm_score < self.glcm_thresh:
-                LOGGER.info(f'glcm homogeneity score:{glcm_score}')
-                OoD_list.append(samples[i])
-                continue
-
-            maxLogit = torch.max(output, 1)[0].unsqueeze(1)
-            maxLogit = self.batch_min_max(maxLogit)
-            softmaxDistance = self.get_softmaxDistance(output).unsqueeze(1)
-            cosDistanceLoss = self.get_cosDistanceLoss(output, pred)
-
-            maxLogit, softmaxDistance = maxLogit.mean(1, keepdim=True), \
-                softmaxDistance.mean(1, keepdim=True)
-
-            origin_shape = maxLogit.shape
-            maxLogit, softmaxDistance, cosDistanceLoss = maxLogit.flatten(), \
-                softmaxDistance.flatten(), cosDistanceLoss.flatten()
-
-            effec_shape = maxLogit.shape[0]
-            temp_x = torch.cat([maxLogit.reshape(effec_shape, 1),
-                                softmaxDistance.reshape(effec_shape, 1),
-                                cosDistanceLoss.reshape(effec_shape, 1)],
-                               dim=1)
-
-            OOD_pred = self.ood_model.predict(temp_x.cpu().numpy())
-            OOD_pred_show = OOD_pred + 1
-            OOD_pred_show = OOD_pred_show.reshape(origin_shape)
-
-            for j in range(origin_shape[0]):
-                OOD_score = (OOD_pred_show[j] == 1).sum(
-                ) / (OOD_pred_show[j] != 0).sum()
-                LOGGER.info(f'OOD_score:{OOD_score}')
-                if OOD_score > self.OOD_thresh:
-                    OoD_list.append(samples[i])
-                    ood_scores.append(OOD_score)
-                else:
-                    InD_list.append(samples[i])
-                    predictions.append(pred.data.cpu().numpy())
-
-        return InD_list, OoD_list, predictions, ood_scores
 
     def batch_min_max(self, img):
         max_value = torch.amax(img, [1, 2, 3]).unsqueeze(dim=1)

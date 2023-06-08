@@ -2,13 +2,14 @@ import time
 import os
 # os.environ["MODEL_URLS"] = "s3://kubeedge/sedna-robo/kb/index.pkl"
 # os.environ["KB_SERVER"] = "http://127.0.0.1:9020"
-# os.environ["test_data"] = "/data/test_data"
+# os.environ["test_data"] = "/data/garden_test"
 # os.environ["unseen_save_url"] = "s3://kubeedge/sedna-robo/unseen_samples/"
 # os.environ["metadata_url"] = "s3://kubeedge/sedna-robo/metadata/"
 # os.environ["OUTPUT_URL"] = "s3://kubeedge/sedna-robo/"
 
-# os.environ["OOD_thresh"] = "0.2"
-# os.environ["ramp_detection"] = "/home/lsq/RFNet/models/garden_2_GPU.pth"
+# os.environ["OOD_thresh"] = "0.5"
+# os.environ["OOD_model"] = "https://kubeedge.obs.cn-north-1.myhuaweicloud.com/sedna-robo/models/garden.model"
+# os.environ["ramp_detection"] = "https://kubeedge.obs.cn-north-1.myhuaweicloud.com/sedna-robo/models/garden.pth"
 
 from PIL import Image
 from sedna.datasources import BaseDataSource
@@ -55,7 +56,7 @@ def init_ll_job():
             "OOD_model": Context.get_parameters("OOD_model"),
             "OOD_backup_model": Context.get_parameters(robo_skill),
             "preprocess_func": preprocess_frames,
-            "base_model": Estimator,
+            "base_model": estimator,
             "stage": "inference"
         }
     }

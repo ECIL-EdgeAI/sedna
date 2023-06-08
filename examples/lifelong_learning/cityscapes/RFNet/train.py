@@ -78,7 +78,7 @@ def train(estimator, train_data):
         "method": "OodIdentification",
         "param": {
             "preprocess_func": preprocess,
-            "base_model": Estimator,
+            "base_model": estimator,
             "stage": "train"
         }
     }
