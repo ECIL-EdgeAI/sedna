@@ -7,14 +7,15 @@ from PIL import Image
 from torchvision import transforms
 from torch.utils.data import DataLoader
 from torchvision import transforms
+from torchvision.transforms import ToPILImage
 from sklearn.model_selection import train_test_split
 from sedna.common.config import Context
 from sedna.datasources import BaseDataSource
 from sedna.common.file_ops import FileOps
 from sedna.common.log import LOGGER
-from sedna.common.config import BaseConfig
 
 from dataloaders import custom_transforms as tr
+from dataloaders.utils import Colorize
 from utils.args import TrainingArguments, EvaluationArguments
 from estimators.train import Trainer
 from estimators.eval import Validator, load_my_state_dict
@@ -89,10 +90,6 @@ class Estimator:
         self.trainer = None
         self.train_model_url = None
 
-        infer_result_dir = Context.get_parameters("INFERENCE_RESULT_DIR", os.path.join(
-            BaseConfig.data_path_prefix, "inference_results"))
-        self.val_args.infer_result_dir = infer_result_dir
-        self.val_args.weight_path = kwargs.get("weight_path")
         self.validator = Validator(self.val_args)
 
     def train(self, train_data, valid_data=None, **kwargs):
@@ -143,13 +140,6 @@ class Estimator:
         if isinstance(data[0], np.ndarray):
             data = preprocess_url(data)
 
-        seen_params = kwargs.get("seen_params")
-        if seen_params is not None:
-            res = seen_params[0]
-            for i, pred in enumerate(res):
-                self.validator.save_predicted_image(data[i][0]["image"], pred, data[i][1])
-            return res
-
         self.validator.test_loader = DataLoader(
             data,
             batch_size=self.val_args.test_batch_size,
@@ -183,3 +173,41 @@ class Estimator:
             return self.train_model_url
 
         return FileOps.upload(self.train_model_url, model_path)
+
+
+def save_predicted_image(img_url, image, pred, image_name):
+    '''
+    Sample post processing function invoked by Sedna 
+    to upload the inference results
+    '''
+
+    merge_label_name = os.path.join(img_url, f"merge_{image_name}")
+    color_label_name = os.path.join(img_url, f"color_{image_name}")
+    label_name = os.path.join(img_url, f"label_{image_name}")
+    os.makedirs(os.path.dirname(merge_label_name), exist_ok=True)
+    os.makedirs(os.path.dirname(color_label_name), exist_ok=True)
+    os.makedirs(os.path.dirname(label_name), exist_ok=True)
+
+    # Save prediction images
+    pred = torch.from_numpy(pred).byte()
+    pre_color = Colorize()(pred)
+    pre_label = pred
+
+    pre_color_image = ToPILImage()(pre_color[0])
+    image_merge(image, pre_color_image, merge_label_name)
+    pre_color_image.save(color_label_name)
+    pre_label_image = ToPILImage()(pre_label)
+    pre_label_image.save(label_name)
+
+    return (merge_label_name, color_label_name, label_name)
+
+
+def image_merge(image, label, save_name):
+    '''
+    Merge original image and predicted image into one image
+    '''
+    image = image.resize(label.size, Image.BILINEAR)
+    image = image.convert('RGBA')
+    label = label.convert('RGBA')
+    image = Image.blend(image, label, 0.6).resize(image.size)
+    image.save(save_name)

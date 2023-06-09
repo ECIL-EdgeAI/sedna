@@ -1,10 +1,7 @@
-import os
-import time
 from tqdm import tqdm
 
 import numpy as np
 import torch
-from torchvision.transforms import ToPILImage
 from PIL import Image
 import cv2
 import torch.backends.cudnn as cudnn
@@ -12,7 +9,6 @@ from sedna.common.log import LOGGER
 from sedna.common.file_ops import FileOps
 
 from dataloaders import make_data_loader
-from dataloaders.utils import Colorize
 from utils.metrics import Evaluator
 from models.rfnet import RFNet
 from models.resnet.resnet_single_scale_single_attention import *
@@ -89,37 +85,6 @@ class Validator(object):
             predictions.append(pred)
 
         return predictions
-
-def save_predicted_image(img_url, image, pred, image_name):
-    merge_label_name = os.path.join(img_url, f"merge_{image_name}")
-    color_label_name = os.path.join(img_url, f"color_{image_name}")
-    label_name = os.path.join(img_url, f"label_{image_name}")
-    os.makedirs(os.path.dirname(merge_label_name), exist_ok=True)
-    os.makedirs(os.path.dirname(color_label_name), exist_ok=True)
-    os.makedirs(os.path.dirname(label_name), exist_ok=True)
-
-    # Save prediction images
-    pred = torch.from_numpy(pred).byte()
-    pre_color = Colorize()(pred)
-    pre_label = pred
-
-    pre_color_image = ToPILImage()(pre_color[0])
-    image_merge(image, pre_color_image, merge_label_name)
-    pre_color_image.save(color_label_name)
-    pre_label_image = ToPILImage()(pre_label)
-    pre_label_image.save(label_name)
-
-    return (merge_label_name, color_label_name, label_name)
-
-def image_merge(image, label, save_name):
-    '''
-    Merge original image and predicted image into one image
-    '''
-    image = image.resize(label.size, Image.BILINEAR)
-    image = image.convert('RGBA')
-    label = label.convert('RGBA')
-    image = Image.blend(image, label, 0.6).resize(image.size)
-    image.save(save_name)
 
 
 def paint_trapezoid(color):

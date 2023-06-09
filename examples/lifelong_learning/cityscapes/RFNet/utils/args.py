@@ -2,6 +2,8 @@ import os
 
 import torch
 from sedna.common.config import BaseConfig
+from sedna.common.config import BaseConfig
+from sedna.common.config import Context
 
 
 class Arguments:
@@ -94,14 +96,6 @@ class EvaluationArguments(Arguments):
         super(EvaluationArguments, self).__init__(**kwargs)
 
         self.weight_path = kwargs.get('weight_path')  # path of the weight
-        # whether to merge images and labels
-        self.merge = kwargs.get('merge', True)
-        self.save_predicted_image = kwargs.get(
-            'save_predicted_image',
-            False)  # whether to save the predicted images
-        self.color_label_save_path = kwargs.get('color_label_save_path', os.path.join(
-            BaseConfig.data_path_prefix, "inference_results/color"))  # path to save colored label images
-        self.merge_label_save_path = kwargs.get('merge_label_save_path', os.path.join(
-            BaseConfig.data_path_prefix, "inference_results/merge"))  # path to save merged label images
-        self.label_save_path = kwargs.get("label_save_path", os.path.join(
-            BaseConfig.data_path_prefix, "inference_results/label"))  # path to save label images
+        infer_result_dir = Context.get_parameters("INFERENCE_RESULT_DIR", os.path.join(
+            BaseConfig.data_path_prefix, "inference_results"))
+        self.infer_result_dir = infer_result_dir

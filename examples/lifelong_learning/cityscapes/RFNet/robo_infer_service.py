@@ -30,9 +30,9 @@ from sedna.common.utils import get_host_ip
 from sedna.common.config import BaseConfig
 from sedna.common.config import Context
 
-from predict import init_ll_job, preprocess
+from predict import init_ll_job, preprocess, unseen_sample_postprocess
 from ramp_postprocess import get_ramp
-from estimators.eval import save_predicted_image
+from interface import save_predicted_image
 
 
 class ImagePayload(BaseModel):
@@ -192,7 +192,8 @@ class InferenceServer(BaseServer):  # pylint: disable=too-many-arguments
 
         end_time2 = time.time()
         prediction, is_unseen_task, _ = self.ll_job.inference(
-            predict_data, seen_sample_postprocess=save_predicted_image)
+            predict_data, seen_sample_postprocess=save_predicted_image,
+            unseen_sample_postprocess=unseen_sample_postprocess)
 
         end_time3 = time.time()
         print("inference time: ", end_time3 - end_time2)

@@ -434,6 +434,9 @@ class LifelongLearning(JobBase):
         post_process: function
             function or a registered method,  effected after `estimator`
             prediction, like: label transform.
+        seen_sample_postprocess: function
+            function or a registered method, effected when seen sample
+            inference results need to be saved systematically.
         unseen_sample_postprocess: function
             function or a registered method, effected when unseen samples
             need to be saved

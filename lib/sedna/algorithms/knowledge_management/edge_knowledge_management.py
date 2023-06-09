@@ -163,15 +163,15 @@ class EdgeKnowledgeManagement(BaseKnowledgeManagement):
                 img = sample.get("image")
             else:
                 img = sample[0]
-           
+
             seen_sample_info = (sample_id, img, results[i])
             self.seen_sample_queue.put(seen_sample_info)
 
     def start_services(self):
-        UnseenSampleThread(self.unseen_sample_queue, \
-            post_process=self.unseen_sample_postprocess).start()
-        SeenSampleThread(self.seen_sample_queue, \
-            post_process=self.seen_sample_postprocess).start()
+        UnseenSampleThread(self.unseen_sample_queue,
+                           post_process=self.unseen_sample_postprocess).start()
+        SeenSampleThread(self.seen_sample_queue,
+                         post_process=self.seen_sample_postprocess).start()
         ModelHotUpdateThread(self).start()
 
 
@@ -216,15 +216,17 @@ class UnseenSampleThread(threading.Thread):
     def __init__(self, unseen_sample_queue, **kwargs):
         self.check_time = 1
         self.unseen_sample_queue = unseen_sample_queue
-        local_unseen_dir = os.path.join(BaseConfig.data_path_prefix,
-                                        "unseen_samples")
+        self.local_unseen_dir = os.path.join(BaseConfig.data_path_prefix,
+                                             "unseen_samples")
         self.unseen_save_url = Context.get_parameters("unseen_save_url",
-                                                      local_unseen_dir)
+                                                      self.local_unseen_dir)
         local_metadata_dir = os.path.join(BaseConfig.data_path_prefix,
                                           "metadata")
         self.metadata_dir = Context.get_parameters("metadata_url",
                                                    local_metadata_dir)
+        self.post_process = kwargs.get("post_process")
 
+        os.makedirs(self.local_unseen_dir, exist_ok=True)
         if not FileOps.is_remote(self.unseen_save_url):
             os.makedirs(self.unseen_save_url, exist_ok=True)
         if not FileOps.is_remote(self.metadata_dir):
@@ -256,16 +258,18 @@ class UnseenSampleThread(threading.Thread):
         return unseen_sample_metadata
 
     def upload_unseen_sample(self, img):
+        if not self.post_process:
+            LOGGER.info("Unseen sample post processing is not callable.")
+            return
+
         if not isinstance(img, str):
             image_name = "{}.png".format(str(time.time()))
-            image_url = FileOps.join_path("/tmp", image_name)
-            img.save(image_url)
         else:
             image_name = os.path.basename(img)
-            image_url = FileOps.join_path("/tmp", image_name)
-            FileOps.upload(img, image_url, clean=False)
 
-        return FileOps.upload(image_url,
+        local_save_url = self.post_process(
+            self.local_unseen_dir, img, image_name)
+        return FileOps.upload(local_save_url,
                               os.path.join(self.unseen_save_url, image_name))
 
     def upload_meta_data(self, sample_id, ood_score, unseen_sample_url,
@@ -306,6 +310,7 @@ class SeenSampleThread(threading.Thread):
             "seen_save_url", self.local_seen_dir)
         self.post_process = kwargs.get("post_process")
 
+        os.makedirs(self.local_seen_dir, exist_ok=True)
         if not FileOps.is_remote(self.seen_save_url):
             os.makedirs(self.seen_save_url, exist_ok=True)
 
@@ -315,13 +320,13 @@ class SeenSampleThread(threading.Thread):
     def run(self):
         while True:
             time.sleep(self.check_time)
-            sample_id, img, res = self.seen_sample_queue.get()
-            self.upload(img, res)
+            _, img, res = self.seen_sample_queue.get()
+            self.upload_seen_sample(img, res)
             self.seen_sample_queue.task_done()
 
-    def upload(self, img, res):
+    def upload_seen_sample(self, img, res):
         if not callable(self.post_process):
-            LOGGER.info(f"Seen sample post processing is not callable.")
+            LOGGER.info("Seen sample post processing is not callable.")
             return
 
         if not isinstance(img, str):
