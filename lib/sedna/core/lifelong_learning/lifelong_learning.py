@@ -420,7 +420,9 @@ class LifelongLearning(JobBase):
         return callback_func(res) if callback_func else res
 
     def inference(self, data=None, post_process=None,
-                  unseen_sample_postprocess=None, **kwargs):
+                  seen_sample_postprocess=None,
+                  unseen_sample_postprocess=None,
+                  **kwargs):
         """
         predict the result for input data based on training knowledge.
 
@@ -462,6 +464,8 @@ class LifelongLearning(JobBase):
             self.edge_knowledge_management.update_kb(index_url)
 
         if not self.start_inference_service:
+            self.edge_knowledge_management.unseen_sample_postprocess = unseen_sample_postprocess
+            self.edge_knowledge_management.seen_sample_postprocess = seen_sample_postprocess
             self._start_inference_service()
             self.start_inference_service = True
 
@@ -484,7 +488,6 @@ class LifelongLearning(JobBase):
 
             self.edge_knowledge_management.save_unseen_samples(
                 unseen_samples,
-                post_process=unseen_sample_postprocess,
                 unseen_params=unseen_params)
 
             res = unseen_res
@@ -504,6 +507,9 @@ class LifelongLearning(JobBase):
                     task_type="seen_task",
                     seen_params=seen_params,
                     **kwargs)
+
+            self.edge_knowledge_management.save_seen_samples(seen_samples, seen_res)
+
             res = np.concatenate((res, seen_res)) if res else seen_res
             tasks.extend(seen_tasks)
 

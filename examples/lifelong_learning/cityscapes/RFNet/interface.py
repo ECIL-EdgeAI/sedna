@@ -89,13 +89,9 @@ class Estimator:
         self.trainer = None
         self.train_model_url = None
 
-        label_save_dir = Context.get_parameters("INFERENCE_RESULT_DIR", os.path.join(
+        infer_result_dir = Context.get_parameters("INFERENCE_RESULT_DIR", os.path.join(
             BaseConfig.data_path_prefix, "inference_results"))
-        self.val_args.color_label_save_path = os.path.join(
-            label_save_dir, "color")
-        self.val_args.merge_label_save_path = os.path.join(
-            label_save_dir, "merge")
-        self.val_args.label_save_path = os.path.join(label_save_dir, "label")
+        self.val_args.infer_result_dir = infer_result_dir
         self.val_args.weight_path = kwargs.get("weight_path")
         self.validator = Validator(self.val_args)
 

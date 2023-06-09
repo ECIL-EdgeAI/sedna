@@ -34,7 +34,7 @@ class EdgeKnowledgeManagement(BaseKnowledgeManagement):
         evaluation, prediction, and exporting for your model.
     """
 
-    def __init__(self, config, seen_estimator, unseen_estimator, **kwargs):
+    def __init__(self, config, seen_estimator, unseen_estimator):
         super(EdgeKnowledgeManagement, self).__init__(
             config, seen_estimator, unseen_estimator)
 
@@ -51,6 +51,9 @@ class EdgeKnowledgeManagement(BaseKnowledgeManagement):
         self.lastest_index_version = None
 
         self.unseen_sample_queue = Queue(maxsize=100)
+        self.seen_sample_queue = Queue(maxsize=100)
+        self.unseen_sample_postprocess = None
+        self.seen_sample_postprocess = None
 
     def update_kb(self, task_index):
         if isinstance(task_index, str):
@@ -153,8 +156,22 @@ class EdgeKnowledgeManagement(BaseKnowledgeManagement):
             unseen_sample_info = (sample_id, img, ood_scores[i])
             self.unseen_sample_queue.put(unseen_sample_info)
 
+    def save_seen_samples(self, samples, results, **kwargs):
+        for i, sample in enumerate(samples.x):
+            sample_id = str(uuid.uuid4())
+            if isinstance(sample, dict):
+                img = sample.get("image")
+            else:
+                img = sample[0]
+           
+            seen_sample_info = (sample_id, img, results[i])
+            self.seen_sample_queue.put(seen_sample_info)
+
     def start_services(self):
-        UnseenSampleThread(self.unseen_sample_queue).start()
+        UnseenSampleThread(self.unseen_sample_queue, \
+            post_process=self.unseen_sample_postprocess).start()
+        SeenSampleThread(self.seen_sample_queue, \
+            post_process=self.seen_sample_postprocess).start()
         ModelHotUpdateThread(self).start()
 
 
@@ -196,7 +213,7 @@ class ModelHotUpdateThread(threading.Thread):
 
 
 class UnseenSampleThread(threading.Thread):
-    def __init__(self, unseen_sample_queue):
+    def __init__(self, unseen_sample_queue, **kwargs):
         self.check_time = 1
         self.unseen_sample_queue = unseen_sample_queue
         local_unseen_dir = os.path.join(BaseConfig.data_path_prefix,
@@ -277,3 +294,49 @@ class UnseenSampleThread(threading.Thread):
             self.metadata_dir,
             "{}.metadata.{}".format(sample_name, metadata_suffix))
         FileOps.upload(name, metadata_url)
+
+
+class SeenSampleThread(threading.Thread):
+    def __init__(self, seen_sample_queue, **kwargs):
+        self.check_time = 1
+        self.seen_sample_queue = seen_sample_queue
+        self.local_seen_dir = os.path.join(
+            BaseConfig.data_path_prefix, "seen_samples")
+        self.seen_save_url = Context.get_parameters(
+            "seen_save_url", self.local_seen_dir)
+        self.post_process = kwargs.get("post_process")
+
+        if not FileOps.is_remote(self.seen_save_url):
+            os.makedirs(self.seen_save_url, exist_ok=True)
+
+        super(SeenSampleThread, self).__init__()
+        LOGGER.info(f"Seen sample saving service starts.")
+
+    def run(self):
+        while True:
+            time.sleep(self.check_time)
+            sample_id, img, res = self.seen_sample_queue.get()
+            self.upload(img, res)
+            self.seen_sample_queue.task_done()
+
+    def upload(self, img, res):
+        if not callable(self.post_process):
+            LOGGER.info(f"Seen sample post processing is not callable.")
+            return
+
+        if not isinstance(img, str):
+            image_name = "{}.png".format(str(time.time()))
+        else:
+            image_name = os.path.basename(img)
+
+        local_save_url = self.post_process(
+            self.local_seen_dir, img, res, image_name)
+        if not isinstance(local_save_url, str):
+            for img_url in local_save_url:
+                image_name = os.path.basename(img_url)
+                FileOps.upload(img_url,
+                               os.path.join(self.seen_save_url, image_name))
+        else:
+            image_name = os.path.basename(local_save_url)
+            FileOps.upload(img_url,
+                           os.path.join(self.seen_save_url, image_name))

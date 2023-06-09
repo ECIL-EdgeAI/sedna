@@ -32,6 +32,7 @@ from sedna.common.config import Context
 
 from predict import init_ll_job, preprocess
 from ramp_postprocess import get_ramp
+from estimators.eval import save_predicted_image
 
 
 class ImagePayload(BaseModel):
@@ -128,8 +129,8 @@ class InferenceServer(BaseServer):  # pylint: disable=too-many-arguments
 
         self.ll_job = init_ll_job()
 
-        self.inference_image_dir = os.environ.get("IMAGE_TOPIC_URL", \
-            os.path.join(BaseConfig.data_path_prefix, "inference_images"))
+        self.inference_image_dir = os.environ.get("IMAGE_TOPIC_URL",
+                                                  os.path.join(BaseConfig.data_path_prefix, "inference_images"))
         os.makedirs(self.inference_image_dir, exist_ok=True)
 
         self.max_buffer_size = max_buffer_size
@@ -190,7 +191,9 @@ class InferenceServer(BaseServer):  # pylint: disable=too-many-arguments
         print("preprocess time:", end_time1 - start_time)
 
         end_time2 = time.time()
-        prediction, is_unseen_task, _ = self.ll_job.inference(predict_data)
+        prediction, is_unseen_task, _ = self.ll_job.inference(
+            predict_data, seen_sample_postprocess=save_predicted_image)
+
         end_time3 = time.time()
         print("inference time: ", end_time3 - end_time2)
         if is_unseen_task:
@@ -207,19 +210,18 @@ class InferenceServer(BaseServer):  # pylint: disable=too-many-arguments
                 "code": 0
             }
 
-        # curb_results, ramp_results = results
-
         img_rgb = cv2.resize(np.array(self.image),
                              (2048, 1024), interpolation=cv2.INTER_CUBIC)
         img_rgb = Image.fromarray(np.array(img_rgb))
-        
+
         results = post_process(prediction)
         curr, future = get_curb(results["result"]["box"], img_rgb)
         results["result"]["curr"] = curr
         results["result"]["future"] = future
         results["result"]["box"] = None
         if Context.get_parameters("robo_skill") == "ramp_detection":
-            results["result"]["ramp"] = get_ramp(prediction[0].tolist(), img_rgb)
+            results["result"]["ramp"] = get_ramp(
+                prediction[0].tolist(), img_rgb)
         else:
             results["result"]["ramp"] = "no_ramp"
 

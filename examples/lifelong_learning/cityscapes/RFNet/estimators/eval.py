@@ -88,49 +88,33 @@ class Validator(object):
             pred = np.argmax(pred, axis=1)
             predictions.append(pred)
 
-            # Save prediction images
-            self.save_predicted_image(image, pred, image_name)
-
         return predictions
-    
-    def save_predicted_image(self, image, pred, image_name):
-        # Save prediction images
-        pred = torch.from_numpy(pred).byte()
-        pre_colors = Colorize(n=self.args.num_class)(pred)
-        pre_labels = pred
-        for i in range(pre_colors.shape[0]):
-            if not image_name or not image_name[i]:
-                img_name = f"test_{time.time()}.png"
-            else:
-                img_name = os.path.basename(image_name[i])
 
-            if not self.args.merge:
-                continue
-            merge_label_name = os.path.join(
-                self.args.merge_label_save_path, img_name)
-            os.makedirs(os.path.dirname(merge_label_name), exist_ok=True)
-            pre_color_image = ToPILImage()(
-                pre_colors[i])  # pre_colors.dtype = float64
-            image_merge(image[i], pre_color_image, merge_label_name)
+def save_predicted_image(img_url, image, pred, image_name):
+    merge_label_name = os.path.join(img_url, f"merge_{image_name}")
+    color_label_name = os.path.join(img_url, f"color_{image_name}")
+    label_name = os.path.join(img_url, f"label_{image_name}")
+    os.makedirs(os.path.dirname(merge_label_name), exist_ok=True)
+    os.makedirs(os.path.dirname(color_label_name), exist_ok=True)
+    os.makedirs(os.path.dirname(label_name), exist_ok=True)
 
-            if not self.args.save_predicted_image:
-                continue
-            color_label_name = os.path.join(
-                self.args.color_label_save_path, img_name)
-            label_name = os.path.join(self.args.label_save_path, img_name)
-            os.makedirs(os.path.dirname(color_label_name), exist_ok=True)
-            os.makedirs(os.path.dirname(label_name), exist_ok=True)
-            pre_color_image.save(color_label_name)
+    # Save prediction images
+    pred = torch.from_numpy(pred).byte()
+    pre_color = Colorize()(pred)
+    pre_label = pred
 
-            pre_label_image = ToPILImage()(pre_labels[i])
-            pre_label_image.save(label_name)
+    pre_color_image = ToPILImage()(pre_color[0])
+    image_merge(image, pre_color_image, merge_label_name)
+    pre_color_image.save(color_label_name)
+    pre_label_image = ToPILImage()(pre_label)
+    pre_label_image.save(label_name)
 
+    return (merge_label_name, color_label_name, label_name)
 
 def image_merge(image, label, save_name):
     '''
     Merge original image and predicted image into one image
     '''
-    image = ToPILImage()(image.detach().cpu().byte())
     image = image.resize(label.size, Image.BILINEAR)
     image = image.convert('RGBA')
     label = label.convert('RGBA')

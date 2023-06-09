@@ -7,6 +7,7 @@ import os
 # os.environ["CLOUD_KB_INDEX"] = "s3://kubeedge/sedna-robo/kb/index.pkl"
 # os.environ["HAS_COMPLETED_INITIAL_TRAINING"] = "true"
 
+
 from PIL import Image
 from torchvision import transforms
 from sedna.core.lifelong_learning import LifelongLearning

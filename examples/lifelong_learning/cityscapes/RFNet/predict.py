@@ -2,12 +2,13 @@ import time
 import os
 # os.environ["MODEL_URLS"] = "s3://kubeedge/sedna-robo/kb/index.pkl"
 # os.environ["KB_SERVER"] = "http://127.0.0.1:9020"
-# os.environ["test_data"] = "/data/garden_test"
+# os.environ["test_data"] = "/data/test_data"
 # os.environ["unseen_save_url"] = "s3://kubeedge/sedna-robo/unseen_samples/"
+# os.environ["seen_save_url"] = "s3://kubeedge/sedna-robo/seen_samples/"
 # os.environ["metadata_url"] = "s3://kubeedge/sedna-robo/metadata/"
 # os.environ["OUTPUT_URL"] = "s3://kubeedge/sedna-robo/"
 
-# os.environ["OOD_thresh"] = "0.5"
+# os.environ["OOD_thresh"] = "0.7"
 # os.environ["OOD_model"] = "https://kubeedge.obs.cn-north-1.myhuaweicloud.com/sedna-robo/models/garden.model"
 # os.environ["ramp_detection"] = "https://kubeedge.obs.cn-north-1.myhuaweicloud.com/sedna-robo/models/garden.pth"
 
@@ -18,7 +19,7 @@ from sedna.common.config import Context
 from sedna.common.log import LOGGER
 
 from interface import Estimator, preprocess_frames
-
+from estimators.eval import save_predicted_image
 
 def preprocess(samples):
     data = BaseDataSource(data_type="test")
@@ -97,7 +98,8 @@ def predict():
             img_rgb = Image.open(test_data_url).convert("RGB")
             sample = {'image': img_rgb, "depth": img_rgb, "label": img_rgb}
             predict_data = preprocess(sample)
-            prediction, is_unseen, _ = ll_job.inference(predict_data)
+            prediction, is_unseen, _ = ll_job.inference(predict_data, \
+                seen_sample_postprocess=save_predicted_image)
             LOGGER.info(f"Image {i + count + 1} is unseen task: {is_unseen}")
             LOGGER.info(
                 f"Image {i + count + 1} prediction result: {prediction}")
