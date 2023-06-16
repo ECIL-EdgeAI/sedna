@@ -1,18 +1,13 @@
-# Copyright 2023 The KubeEdge Authors.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
 import os
+# os.environ["OUTPUT_URL"] = "s3://kubeedge/sedna-robo/kb_2"
+# os.environ["MODEL_URLS"] = "s3://kubeedge/sedna-robo/kb/index.pkl"
+# os.environ["TEST_DATASET_URL"] = "/home/lsq/RFNet/data_index/test.txt"
+# os.environ["ORIGINAL_DATASET_URL"] = "/home/lsq/RFNet/data_index/test.txt"
+# os.environ["KB_SERVER"] = "http://127.0.0.1:9020"
+
+# os.environ["model_threshold"] = "0"
+# os.environ["operator"] = "<"
+
 
 from sedna.core.lifelong_learning import LifelongLearning
 from sedna.datasources import TxtDataParse
@@ -34,13 +29,13 @@ def _load_txt_dataset(dataset_url):
 
 
 def eval():
-    estimator = Estimator(num_class=Context.get_parameters("num_class", 24))
+    estimator = Estimator(num_class=31)
     eval_dataset_url = Context.get_parameters("test_dataset_url")
     eval_data = TxtDataParse(data_type="eval", func=_load_txt_dataset)
     eval_data.parse(eval_dataset_url, use_raw=False)
 
     task_allocation = {
-        "method": "TaskAllocationByOrigin"
+        "method": "TaskAllocationSimple"
     }
 
     ll_job = LifelongLearning(estimator,

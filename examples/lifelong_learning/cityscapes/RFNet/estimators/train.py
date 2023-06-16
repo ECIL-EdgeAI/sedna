@@ -87,7 +87,8 @@ class Trainer(object):
                     "=> no checkpoint found at '{}'" .format(
                         args.resume))
             self.logger.info(f"Training: load model from {args.resume}")
-            checkpoint = torch.load(args.resume)
+            checkpoint = torch.load(args.resume, \
+                map_location="cpu" if not self.args.cuda else None)
             args.start_epoch = checkpoint['epoch']
             self.model.load_state_dict(checkpoint['state_dict'])
             if not args.ft:
@@ -120,9 +121,9 @@ class Trainer(object):
             self.scheduler(self.optimizer, i, epoch, self.best_pred)
             self.optimizer.zero_grad()
             if self.args.depth:
-                output = self.model(image, depth)
+                _, output = self.model(image, depth)
             else:
-                output = self.model(image)
+                _, output = self.model(image)
 
             target[target > self.nclass - 1] = 255
             loss = self.criterion(output, target)
@@ -175,9 +176,9 @@ class Trainer(object):
                     depth = depth.cuda()
             with torch.no_grad():
                 if self.args.depth:
-                    output = self.model(image, depth)
+                    _, output = self.model(image, depth)
                 else:
-                    output = self.model(image)
+                    _, output = self.model(image)
             target[target > self.nclass - 1] = 255
             loss = self.criterion(output, target)
             test_loss += loss.item()
@@ -218,5 +219,5 @@ class Trainer(object):
                 'optimizer': self.optimizer.state_dict(),
                 'best_pred': self.best_pred,
             }, is_best)
-        
-        return new_pred
+
+        return mIoU

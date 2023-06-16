@@ -1,29 +1,14 @@
-# Copyright 2023 The KubeEdge Authors.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
 from typing import Tuple
 
+from sedna.common.file_ops import FileOps
 from sedna.datasources import BaseDataSource
 from sedna.common.class_factory import ClassFactory, ClassType
-
-from .base_unseen_sample_recognition import BaseSampleRegonition
 
 __all__ = ('SampleRegonitionDefault', 'SampleRegonitionByRFNet')
 
 
 @ClassFactory.register(ClassType.UTD)
-class SampleRegonitionDefault(BaseSampleRegonition):
+class SampleRegonitionDefault:
     '''
     Divide inference samples into seen samples and unseen samples
 
@@ -34,7 +19,10 @@ class SampleRegonitionDefault(BaseSampleRegonition):
     '''
 
     def __init__(self, task_index, **kwargs):
-        super(SampleRegonitionDefault, self).__init__(task_index)
+        if isinstance(task_index, str) and FileOps.exists(task_index):
+            self.task_index = FileOps.load(task_index)
+        else:
+            self.task_index = task_index
 
     def __call__(self,
                  samples: BaseDataSource) -> Tuple[BaseDataSource,
@@ -52,7 +40,7 @@ class SampleRegonitionDefault(BaseSampleRegonition):
         '''
         import random
         seen_task_samples = BaseDataSource(data_type=samples.data_type)
-        unseen_task_samples = BaseDataSource(data_type=samples.data_type)
+        unseen_task_samples = BaseDataSource(data_type=samples.data_type)\
 
         if samples.num_examples() == 1:
             random_index = random.randint(0, 1)
@@ -69,3 +57,48 @@ class SampleRegonitionDefault(BaseSampleRegonition):
         unseen_task_samples.x = samples.x[sample_num:]
 
         return seen_task_samples, unseen_task_samples
+
+@ClassFactory.register(ClassType.UTD)
+class SampleRegonitionByRFNet:
+    '''
+    Divide inference samples into seen samples and unseen samples by confidence.
+
+    Parameters
+    ----------
+    task_index: str or dict
+        knowledge base index which includes indexes of tasks, samples and etc.
+    '''
+
+    def __init__(self, task_index, **kwargs):
+        if isinstance(task_index, str) and FileOps.exists(task_index):
+            self.task_index = FileOps.load(task_index)
+        else:
+            self.task_index = task_index
+
+        self.validator = kwargs.get("validator")
+
+    def __call__(self, samples: BaseDataSource, **
+                 kwargs) -> Tuple[BaseDataSource, BaseDataSource]:
+        '''
+        Parameters
+        ----------
+        samples : BaseDataSource
+            inference samples
+
+        Returns
+        -------
+        seen_task_samples: BaseDataSource
+        unseen_task_samples: BaseDataSource
+        '''
+        from torch.utils.data import DataLoader
+
+        self.validator.test_loader = DataLoader(
+            samples.x, batch_size=1, shuffle=False)
+
+        seen_task_samples = BaseDataSource(data_type=samples.data_type)
+        unseen_task_samples = BaseDataSource(data_type=samples.data_type)
+
+        seen_task_samples.x, unseen_task_samples.x = self.validator.task_divide()
+
+        return seen_task_samples, unseen_task_samples
+

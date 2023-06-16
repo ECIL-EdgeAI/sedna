@@ -121,8 +121,6 @@ class CSVDataParse(BaseDataSource, ABC):
         return pd.DataFrame.from_dict([lines], **kwargs)
 
     def parse(self, *args, **kwargs):
-        from pycocotools.coco import COCO
-
         x_data = []
         y_data = []
         label = kwargs.pop("label") if "label" in kwargs else ""
@@ -169,6 +167,8 @@ class JSONDataParse(BaseDataSource, ABC):
         self.annotations = None
 
     def parse(self, *args, **kwargs):
+        from pycocotools.coco import COCO
+
         DIRECTORY = "train"
         LABEL_PATH = "*/gt/gt_val_half.txt"
         filepath = Path(*args)

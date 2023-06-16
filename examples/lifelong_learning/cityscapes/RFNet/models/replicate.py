@@ -1,3 +1,13 @@
+# -*- coding: utf-8 -*-
+# File   : replicate.py
+# Author : Jiayuan Mao
+# Email  : maojiayuan@gmail.com
+# Date   : 27/01/2018
+#
+# This file is part of Synchronized-BatchNorm-PyTorch.
+# https://github.com/vacancy/Synchronized-BatchNorm-PyTorch
+# Distributed under MIT License.
+
 import functools
 
 from torch.nn.parallel.data_parallel import DataParallel
@@ -47,8 +57,7 @@ class DataParallelWithCallback(DataParallel):
     """
 
     def replicate(self, module, device_ids):
-        modules = super(DataParallelWithCallback,
-                        self).replicate(module, device_ids)
+        modules = super(DataParallelWithCallback, self).replicate(module, device_ids)
         execute_replication_callbacks(modules)
         return modules
 

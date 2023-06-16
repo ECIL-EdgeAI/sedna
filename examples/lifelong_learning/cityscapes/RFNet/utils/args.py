@@ -2,6 +2,8 @@ import os
 
 import torch
 from sedna.common.config import BaseConfig
+from sedna.common.config import BaseConfig
+from sedna.common.config import Context
 
 
 class Arguments:
@@ -19,7 +21,7 @@ class Arguments:
         self.image_size = kwargs.get(
             "image_size", (2048, 1024))  # output image shape
         # input batch size for training
-        self.batch_size = int(kwargs.get("batch_size", 4))
+        self.batch_size = kwargs.get("batch_size")
         self.val_batch_size = int(kwargs.get(
             "val_batch_size", 1))  # input batch size for validation
         self.test_batch_size = int(kwargs.get(
@@ -79,7 +81,8 @@ class TrainingArguments(Arguments):
         self.no_val = kwargs.get("no_val", True)
 
         if not self.batch_size:
-            self.batch_size = 4 * len(self.gpu_ids)
+            # self.batch_size = 4 * len(self.gpu_ids)
+            self.batch_size = 4
 
         torch.manual_seed(self.seed)
 
@@ -93,14 +96,6 @@ class EvaluationArguments(Arguments):
         super(EvaluationArguments, self).__init__(**kwargs)
 
         self.weight_path = kwargs.get('weight_path')  # path of the weight
-        # whether to merge images and labels
-        self.merge = kwargs.get('merge', True)
-        self.save_predicted_image = kwargs.get(
-            'save_predicted_image',
-            False)  # whether to save the predicted images
-        self.color_label_save_path = kwargs.get('color_label_save_path', os.path.join(
-            BaseConfig.data_path_prefix, "inference_results/color"))  # path to save colored label images
-        self.merge_label_save_path = kwargs.get('merge_label_save_path', os.path.join(
-            BaseConfig.data_path_prefix, "inference_results/merge"))  # path to save merged label images
-        self.label_save_path = kwargs.get("label_save_path", os.path.join(
-            BaseConfig.data_path_prefix, "inference_results/label"))  # path to save label images
+        infer_result_dir = Context.get_parameters("INFERENCE_RESULT_DIR", os.path.join(
+            BaseConfig.data_path_prefix, "inference_results"))
+        self.infer_result_dir = infer_result_dir

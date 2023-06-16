@@ -1,10 +1,11 @@
+kubectl $action -f - <<EOF
 apiVersion: sedna.io/v1alpha1
 kind: LifelongLearningJob
 metadata:
   name: $job_name
 spec:
   dataset:
-    name: "lifelong-robo-dataset"
+    name: "lifelong-dataset-robo"
     trainProb: 0.8
   trainSpec:
     template:
@@ -14,27 +15,25 @@ spec:
         containers:
           - image: $cloud_image
             name:  train-worker
-            imagePullPolicy: IfNotPresent         
+            imagePullPolicy: IfNotPresent
             args: ["train.py"]
             env:
-              - name: "num_class"
-                value: "24"
-              - name: "epoches"
-                value: "1"
+              - name: "train_ratio"
+                value: "0.9"
             resources:
               limits:
                 cpu: 6
-                memory: 12Gi
+                memory: 6Gi
               requests:
                 cpu: 4
-                memory: 10Gi
+                memory: 12Gi
             volumeMounts:
             - mountPath: /dev/shm
               name: cache-volume
         volumes:
         - emptyDir:
             medium: Memory
-            sizeLimit: 256Mi
+            sizeLimit: 128Mi
           name: cache-volume
     trigger:
       checkPeriodSeconds: 30
@@ -58,17 +57,15 @@ spec:
             env:
               - name: "operator"
                 value: "<"
-              - name: "model_threshold"
+              - name: "model_threshold"  # Threshold for filtering deploy models
                 value: "0"
-              - name: "num_class"
-                value: "24"
             resources:
               limits:
                 cpu: 6
                 memory: 6Gi
               requests:
                 cpu: 4
-                memory: 5Gi
+                memory: 10Gi
   deploySpec:
     template:
       spec:
@@ -79,41 +76,36 @@ spec:
         - image: $edge_image
           name:  infer-worker
           imagePullPolicy: IfNotPresent
-          args: ["predict.py"]
+          args: ["robo_infer_service.py"]
           env:
-            - name: "test_data"
-              value: "/data/test_data"
-            - name: "num_class"
-              value: "24"
             - name: "unseen_save_url"
-              value: "/data/unseen_samples"
+              value: "s3://kubeedge/sedna-robo/unseen_samples/"
+            - name: "OOD_model"
+              value: "s3://kubeedge/sedna-robo/models/lr_model.model"
+            - name: "OOD_thresh"
+              value: "0.2"
+            - name: "robo_skill"
+              value: "ramp_detection"
+            - name: "ramp_detection"
+              value: "s3://kubeedge/sedna-robo/models/ramp_train1_200.pth"
+            - name: "curb_detection"
+              value: "s3://kubeedge/sedna-robo/models/2048x1024_80.pth"
+            - name: "stage"
+              value: "inference"
             - name: "INFERENCE_RESULT_DIR"
-              value: "/data/infer_results"
+              value: "/home/data/infer_results"
           volumeMounts:
-          - name: unseenurl
-            mountPath: /data/unseen_samples
-          - name: inferdata
-            mountPath: /data/infer_results
-          - name: testdata
-            mountPath: /data/test_data
-          resources:
+            - name: inferdata
+              mountPath: /home/data/infer_results
+          resources:  # user defined resources
             limits:
               cpu: 6
               memory: 6Gi
             requests:
               cpu: 4
-              memory: 3Gi
-        volumes:
-          - name: unseenurl
-            hostPath:
-              path: /data/unseen_samples
-              type: DirectoryOrCreate
+              memory: 10Gi
+        volumes:   # user defined volumes
           - name: inferdata
             hostPath:
-              path: /data/infer_results
+              path:  /data/infer_results
               type: DirectoryOrCreate
-          - name: testdata
-            hostPath:
-              path: /data/test_data
-              type: DirectoryOrCreate
-  outputDir: $OUTPUT/$job_name

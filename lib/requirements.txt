@@ -8,7 +8,7 @@ fastapi~=0.68.1  # MIT
 pydantic>=1.8.1  # MIT
 tenacity~=8.0.1  # Apache-2.0
 joblib~=1.2.0  # BSD
-pandas  # BSD
+pandas~=1.1.5  # BSD
 six~=1.15.0  # MIT
 minio~=7.0.3  # Apache-2.0
 uvicorn~=0.14.0  # BSD

@@ -1,24 +1,58 @@
-# Copyright 2023 The KubeEdge Authors.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-# 
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
 import os
+# os.environ["OUTPUT_URL"] = "s3://kubeedge/sedna-robo/kb"
+# os.environ["TRAIN_DATASET_URL"] = "/home/data/robo_dataset/data.txt"
+# os.environ["ORIGINAL_DATASET_URL"] = "/home/data/robo_dataset/"
+# os.environ["KB_SERVER"] = "http://127.0.0.1:9020"
 
+# os.environ["CLOUD_KB_INDEX"] = "s3://kubeedge/sedna-robo/kb/index.pkl"
+# os.environ["HAS_COMPLETED_INITIAL_TRAINING"] = "true"
+
+
+from PIL import Image
+from torchvision import transforms
 from sedna.core.lifelong_learning import LifelongLearning
 from sedna.common.config import Context, BaseConfig
 from sedna.datasources import TxtDataParse
 
 from interface import Estimator
+from dataloaders import custom_transforms as tr
+
+
+def preprocess(samples):
+    data = zip(samples.x, samples.y)
+
+    transformed_images = []
+    for (x_data, y_data) in data:
+        if len(x_data) == 2:
+            img_path, depth_path = x_data
+            _img = Image.open(img_path).convert(
+                'RGB').resize((2048, 1024), Image.BILINEAR)
+            _depth = Image.open(depth_path).resize(
+                (2048, 1024), Image.BILINEAR)
+        else:
+            img_path = x_data[0]
+            _img = Image.open(img_path).convert(
+                'RGB').resize((2048, 1024), Image.BILINEAR)
+            _depth = _img
+
+        if y_data is None:
+            y_data = _img
+        else:
+            y_data = Image.open(y_data).resize((2048, 1024), Image.BILINEAR)
+
+        sample = {'image': _img, 'depth': _depth, 'label': y_data}
+        composed_transforms = transforms.Compose([
+            tr.CropBlackArea(),
+            tr.RandomHorizontalFlip(),
+            tr.RandomScaleCrop(base_size=1024, crop_size=768, fill=255),
+            # tr.RandomGaussianBlur(),
+            tr.Normalize(mean=(0.485, 0.456, 0.406),
+                         std=(0.229, 0.224, 0.225)),
+            tr.ToTensor()])
+
+        transformed_images.append((composed_transforms(sample), img_path))
+
+    return transformed_images
 
 
 def _load_txt_dataset(dataset_url):
@@ -34,15 +68,20 @@ def _load_txt_dataset(dataset_url):
 
 def train(estimator, train_data):
     task_definition = {
-        "method": "TaskDefinitionByOrigin",
-        "param": {
-            "attribute": Context.get_parameters("attribute"),
-            "city": Context.get_parameters("city")
-        }
+        "method": "TaskDefinitionSimple"
     }
 
     task_allocation = {
-        "method": "TaskAllocationByOrigin"
+        "method": "TaskAllocationSimple"
+    }
+
+    unseen_sample_recognition = {
+        "method": "OodIdentification",
+        "param": {
+            "preprocess_func": preprocess,
+            "base_model": estimator,
+            "stage": "train"
+        }
     }
 
     ll_job = LifelongLearning(estimator,
@@ -53,7 +92,7 @@ def train(estimator, train_data):
                               inference_integrate=None,
                               task_update_decision=None,
                               unseen_task_allocation=None,
-                              unseen_sample_recognition=None,
+                              unseen_sample_recognition=unseen_sample_recognition,
                               unseen_sample_re_recognition=None
                               )
 
@@ -61,8 +100,7 @@ def train(estimator, train_data):
 
 
 def run():
-    estimator = Estimator(num_class=int(Context.get_parameters("num_class", 24)),
-                          epochs=int(Context.get_parameters("epoches", 1)))
+    estimator = Estimator(num_class=31, epochs=1)
     train_dataset_url = BaseConfig.train_dataset_url
     train_data = TxtDataParse(data_type="train", func=_load_txt_dataset)
     train_data.parse(train_dataset_url, use_raw=False)

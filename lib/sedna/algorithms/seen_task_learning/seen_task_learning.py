@@ -1,4 +1,4 @@
-# Copyright 2023 The KubeEdge Authors.
+# Copyright 2021 The KubeEdge Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -15,6 +15,7 @@
 """Multiple task transfer learning algorithms"""
 
 import json
+import time
 
 from sedna.datasources import BaseDataSource
 from sedna.backend import set_backend
@@ -390,7 +391,7 @@ class SeenTaskLearning:
             self.seen_task_groups.append(task)
 
         task_index = {
-            self.extractor_key: self.seen_extractor,
+            self.extractor_key: {"front": 0, "garden": 1},
             self.task_group_key: self.seen_task_groups
         }
 
@@ -412,12 +413,10 @@ class SeenTaskLearning:
         if isinstance(task_index, str):
             task_index = FileOps.load(task_index)
 
-        self.seen_extractor = \
-            task_index[self.seen_task_key][self.extractor_key]
+        self.seen_extractor = task_index[self.seen_task_key][self.extractor_key]
         if isinstance(self.seen_extractor, str):
             self.seen_extractor = FileOps.load(self.seen_extractor)
-        self.seen_task_groups = \
-            task_index[self.seen_task_key][self.task_group_key]
+        self.seen_task_groups = task_index[self.seen_task_key][self.task_group_key]
         self.seen_models = [task.model for task in self.seen_task_groups]
 
     def predict(self, data: BaseDataSource,
@@ -444,13 +443,15 @@ class SeenTaskLearning:
         tasks : List
             tasks assigned to each sample.
         """
+        if kwargs.get("seen_params"):
+            return kwargs.get("seen_params")
+
         if not (self.seen_models and self.seen_extractor):
             self.load(kwargs.get("task_index", None))
 
         data, mappings = self._task_allocation(samples=data)
         samples, models = self._task_remodeling(samples=data,
-                                                mappings=mappings
-                                                )
+                                                mappings=mappings)
 
         callback = None
         if post_process:

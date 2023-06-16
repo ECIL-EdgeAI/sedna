@@ -1,17 +1,3 @@
-# Copyright 2023 The KubeEdge Authors.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
 import os
 import time
 import tempfile
@@ -25,16 +11,19 @@ from .base_knowledge_management import BaseKnowledgeManagement
 
 __all__ = ('CloudKnowledgeManagement', )
 
-
 @ClassFactory.register(ClassType.KM)
 class CloudKnowledgeManagement(BaseKnowledgeManagement):
     """
     Manage task processing, kb update and task deployment, etc., at cloud.
+
+    Parameters:
+        ----------
+    config: Dict
+        parameters to initialize an object
     """
 
     def __init__(self, config, seen_estimator, unseen_estimator, **kwargs):
-        super(CloudKnowledgeManagement, self).__init__(
-            config, seen_estimator, unseen_estimator)
+        super(CloudKnowledgeManagement, self).__init__(config, seen_estimator, unseen_estimator)
 
         self.last_task_index = kwargs.get("last_task_index", None)
         self.cloud_output_url = config.get(
@@ -54,7 +43,8 @@ class CloudKnowledgeManagement(BaseKnowledgeManagement):
             seen_task_index, task_type=self.seen_task_key)
         unseen_extractor, unseen_task_groups = self.save_task_index(
             unseen_task_index, task_type=self.unseen_task_key)
-
+        meta_estimators = self.save_meta_estimators(task_index["meta_estimators"])
+        
         task_info = {
             self.seen_task_key: {
                 self.task_group_key: seen_task_groups,
@@ -64,6 +54,7 @@ class CloudKnowledgeManagement(BaseKnowledgeManagement):
                 self.task_group_key: unseen_task_groups,
                 self.extractor_key: unseen_extractor
             },
+            "meta_estimators": meta_estimators,
             "create_time": str(time.time())
         }
 
@@ -114,9 +105,7 @@ class CloudKnowledgeManagement(BaseKnowledgeManagement):
 
             for _task in task_group.tasks:
                 _task.model = FileOps.join_path(
-                    self.cloud_output_url,
-                    task_type,
-                    os.path.basename(model_file))
+                    self.cloud_output_url, task_type, os.path.basename(model_file))
                 sample_dir = FileOps.join_path(
                     self.cloud_output_url, task_type,
                     f"{_task.samples.data_type}_{_task.entry}.sample")
@@ -124,8 +113,7 @@ class CloudKnowledgeManagement(BaseKnowledgeManagement):
 
                 try:
                     sample_dir = self.kb_client.upload_file(sample_dir)
-                    self.log.info(
-                        f"Upload task sample to {sample_dir} successfully.")
+                    self.log.info(f"Upload task sample to {sample_dir} successfully.")
                 except Exception as err:
                     self.log.error(
                         f"Upload task samples of {_task.entry} fail: {err}")
@@ -138,20 +126,35 @@ class CloudKnowledgeManagement(BaseKnowledgeManagement):
         extractor = FileOps.dump(extractor, save_extractor)
         try:
             extractor = self.kb_client.upload_file(extractor)
-            self.log.info(
-                f"Upload task extractor to {extractor} successfully.")
+            self.log.info(f"Upload task extractor to {extractor} successfully.")
         except Exception as err:
             self.log.error(f"Upload task extractor fail: {err}")
 
         return extractor, task_groups
+
+    def save_meta_estimators(self, meta_estimator_index):
+        meta_estimators = {}
+        for meta_estimator_name, meta_estimator in meta_estimator_index.items():
+            suffix = os.path.splitext(meta_estimator)[-1]
+            meta_estimator_url = FileOps.join_path(
+            self.cloud_output_url, "meta_estimators", 
+            "{}{}".format(meta_estimator_name, suffix))
+            meta_estimator = FileOps.upload(meta_estimator, meta_estimator_url)
+            try:
+                meta_estimator = self.kb_client.upload_file(meta_estimator)
+                self.log.info(f"Upload meta estimator to {meta_estimator} successfully.")
+            except Exception as err:
+                self.log.error(f"Upload meta estimator fail: {err}")
+            
+            meta_estimators[meta_estimator_name] = meta_estimator
+        return meta_estimators
 
     def evaluate_tasks(self, tasks_detail, **kwargs):
         """
         Parameters
         ----------
         tasks_detail: List[Task]
-            output of module task_update_decision,
-            consisting of results of evaluation.
+            output of module task_update_decision, consisting of results of evaluation.
 
         Returns
         -------
@@ -190,8 +193,7 @@ class CloudKnowledgeManagement(BaseKnowledgeManagement):
                        scores.values())):
                 self.log.warn(
                     f"{entry} will not be deploy because all "
-                    f"scores {self.model_filter_operator} "
-                    f"{self.model_threshold}")
+                    f"scores {self.model_filter_operator} {self.model_threshold}")
                 drop_tasks.append(entry)
                 continue
         drop_task = ",".join(drop_tasks)

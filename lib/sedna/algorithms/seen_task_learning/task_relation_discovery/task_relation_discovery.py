@@ -1,4 +1,4 @@
-# Copyright 2023 The KubeEdge Authors.
+# Copyright 2021 The KubeEdge Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -29,20 +29,19 @@ from typing import List
 from sedna.common.class_factory import ClassType, ClassFactory
 
 from ..artifact import Task, TaskGroup
-from .base_task_relation_discovery import BaseTaskRelationDiscover
 
 
 __all__ = ('DefaultTaskRelationDiscover',)
 
 
 @ClassFactory.register(ClassType.STP)
-class DefaultTaskRelationDiscover(BaseTaskRelationDiscover):
+class DefaultTaskRelationDiscover:
     """
     Assume that each task is independent of each other
     """
 
     def __init__(self, **kwargs):
-        super(DefaultTaskRelationDiscover, self).__init__(**kwargs)
+        pass
 
     def __call__(self, tasks: List[Task]) -> List[TaskGroup]:
         tgs = []

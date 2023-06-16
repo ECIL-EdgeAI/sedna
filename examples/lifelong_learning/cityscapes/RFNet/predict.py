@@ -1,40 +1,26 @@
-# Copyright 2023 The KubeEdge Authors.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
-import os
 import time
+import os
+# os.environ["MODEL_URLS"] = "s3://kubeedge/sedna-robo/kb/index.pkl"
+# os.environ["KB_SERVER"] = "http://127.0.0.1:9020"
+# os.environ["test_data"] = "/data/test_data"
+# os.environ["unseen_save_url"] = "s3://kubeedge/sedna-robo/unseen_samples/"
+# os.environ["seen_save_url"] = "s3://kubeedge/sedna-robo/seen_samples/"
+# os.environ["metadata_url"] = "s3://kubeedge/sedna-robo/metadata/"
+# os.environ["OUTPUT_URL"] = "s3://kubeedge/sedna-robo/"
+
+# os.environ["OOD_thresh"] = "0.45"
+# os.environ["OOD_model"] = "https://kubeedge.obs.cn-north-1.myhuaweicloud.com/sedna-robo/models/garden.model"
+# os.environ["ramp_detection"] = "https://kubeedge.obs.cn-north-1.myhuaweicloud.com/sedna-robo/models/garden.pth"
+
 
 from PIL import Image
 from sedna.datasources import BaseDataSource
+from sedna.core.lifelong_learning import LifelongLearning
 from sedna.common.config import Context
 from sedna.common.log import LOGGER
 from sedna.common.file_ops import FileOps
-from sedna.core.lifelong_learning import LifelongLearning
 
-from interface import Estimator
-
-
-def unseen_sample_postprocess(sample, save_url):
-    if isinstance(sample, dict):
-        img = sample.get("image")
-        image_name = "{}.png".format(str(time.time()))
-        image_url = FileOps.join_path(save_url, image_name)
-        img.save(image_url)
-    else:
-        image_name = os.path.basename(sample[0])
-        image_url = FileOps.join_path(save_url, image_name)
-        FileOps.upload(sample[0], image_url, clean=False)
+from interface import Estimator, preprocess_frames, save_predicted_image
 
 
 def preprocess(samples):
@@ -43,16 +29,48 @@ def preprocess(samples):
     return data
 
 
+def postprocess(samples):
+    image_names, imgs = [], []
+    for sample in samples:
+        img = sample.get("image")
+        image_names.append("{}.png".format(str(time.time())))
+        imgs.append(img)
+
+    return image_names, imgs
+
+
+def unseen_sample_postprocess(img_url, img, img_name):
+    img_url = os.path.join(img_url, img_name)
+    if isinstance(img, str):
+        return FileOps.upload(img, img_url)
+    else:
+        img.save(img_url)
+        return img_url
+
+
 def init_ll_job():
-    estimator = Estimator(num_class=Context.get_parameters("num_class", 24),
+    robo_skill = Context.get_parameters("robo_skill", "ramp_detection")
+    estimator = Estimator(num_class=31,
                           save_predicted_image=True,
+                          weight_path=Context.get_parameters(robo_skill),
                           merge=True)
 
     task_allocation = {
-        "method": "TaskAllocationStream"
+        "method": "TaskAllocationDefault"
     }
     unseen_task_allocation = {
         "method": "UnseenTaskAllocationDefault"
+    }
+    unseen_sample_recognition = {
+        "method": "OodIdentification",
+        "param": {
+            "OOD_thresh": float(Context.get_parameters("OOD_thresh")),
+            "OOD_model": Context.get_parameters("OOD_model"),
+            "OOD_backup_model": Context.get_parameters(robo_skill),
+            "preprocess_func": preprocess_frames,
+            "base_model": estimator,
+            "stage": "inference"
+        }
     }
 
     ll_job = LifelongLearning(
@@ -65,7 +83,7 @@ def init_ll_job():
         inference_integrate=None,
         task_update_decision=None,
         unseen_task_allocation=unseen_task_allocation,
-        unseen_sample_recognition=None,
+        unseen_sample_recognition=unseen_sample_recognition,
         unseen_sample_re_recognition=None)
     return ll_job
 
@@ -81,7 +99,8 @@ def predict():
     test_data_num = len(test_data)
     count = 0
 
-    # Simulate a permenant inference service
+    # simulate a permenant inference service
+    LOGGER.info(f"Inference service starts.")
     while True:
         for i, data in enumerate(test_data):
             LOGGER.info(f"Start to inference image {i + count + 1}")
@@ -90,8 +109,8 @@ def predict():
             img_rgb = Image.open(test_data_url).convert("RGB")
             sample = {'image': img_rgb, "depth": img_rgb, "label": img_rgb}
             predict_data = preprocess(sample)
-            prediction, is_unseen, _ = ll_job.inference(
-                predict_data, 
+            prediction, is_unseen, _ = ll_job.inference(predict_data, \
+                seen_sample_postprocess=save_predicted_image,
                 unseen_sample_postprocess=unseen_sample_postprocess)
             LOGGER.info(f"Image {i + count + 1} is unseen task: {is_unseen}")
             LOGGER.info(
