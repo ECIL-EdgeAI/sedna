@@ -29,7 +29,7 @@ ENV PYTHONPATH "/home/lib"
 WORKDIR /home/work
 COPY ./lib /home/lib
 
-COPY ./examples/lifelong_learning/cityscapes  /home/work/
+COPY ./examples/lifelong_learning/perception_service  /home/work/
 WORKDIR /home/work/RFNet
 
 ENTRYPOINT ["python"]
