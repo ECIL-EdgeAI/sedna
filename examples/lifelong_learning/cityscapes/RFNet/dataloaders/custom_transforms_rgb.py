@@ -4,14 +4,12 @@ import numpy as np
 
 from PIL import Image, ImageOps, ImageFilter
 
-
 class Normalize(object):
     """Normalize a tensor image with mean and standard deviation.
     Args:
         mean (tuple): means for each channel.
         std (tuple): standard deviations for each channel.
     """
-
     def __init__(self, mean=(0., 0., 0.), std=(1., 1., 1.)):
         self.mean = mean
         self.std = std
@@ -62,12 +60,10 @@ class ToTensor(object):
         return {'image': img,
                 'label': mask}
 
-
 class CropBlackArea(object):
     """
     crop black area for depth image
     """
-
     def __call__(self, sample):
         img = sample['image']
         mask = sample['label']
@@ -80,12 +76,14 @@ class CropBlackArea(object):
         img = img.crop((left, top, right, bottom))
         mask = mask.crop((left, top, right, bottom))
         # resize
-        img = img.resize((width, height), Image.BILINEAR)
-        mask = mask.resize((width, height), Image.NEAREST)
+        img = img.resize((width,height), Image.BILINEAR)
+        mask = mask.resize((width,height), Image.NEAREST)
+        # img = img.resize((512,1024), Image.BILINEAR)
+        # mask = mask.resize((512,1024), Image.NEAREST)
+        print(img.size)
 
         return {'image': img,
                 'label': mask}
-
 
 class ToTensor_test(object):
     """Convert Image object in sample to Tensors."""
@@ -151,8 +149,7 @@ class RandomScaleCrop(object):
         img = sample['image']
         mask = sample['label']
         # random scale (short edge)
-        short_size = random.randint(
-            int(self.base_size * 0.5), int(self.base_size * 2.0))
+        short_size = random.randint(int(self.base_size * 0.5), int(self.base_size * 2.0))
         w, h = img.size
         if h > w:
             ow = short_size
@@ -167,8 +164,7 @@ class RandomScaleCrop(object):
             padh = self.crop_size - oh if oh < self.crop_size else 0
             padw = self.crop_size - ow if ow < self.crop_size else 0
             img = ImageOps.expand(img, border=(0, 0, padw, padh), fill=0)
-            mask = ImageOps.expand(mask, border=(
-                0, 0, padw, padh), fill=self.fill)
+            mask = ImageOps.expand(mask, border=(0, 0, padw, padh), fill=self.fill)
         # random crop crop_size
         w, h = img.size
         x1 = random.randint(0, w - self.crop_size)
@@ -206,11 +202,9 @@ class FixScaleCrop(object):
         return {'image': img,
                 'label': mask}
 
-
 class FixedResize(object):
     def __init__(self, size):
-        # size: (h, w)
-        self.size = (size, size)
+        self.size = (size, size)  # size: (h, w)
 
     def __call__(self, sample):
         img = sample['image']
@@ -224,13 +218,13 @@ class FixedResize(object):
         return {'image': img,
                 'label': mask}
 
-
 class Relabel(object):
-    def __init__(self, olabel, nlabel):
-        # change trainid label from olabel to nlabel
+    def __init__(self, olabel, nlabel):  # change trainid label from olabel to nlabel
         self.olabel = olabel
         self.nlabel = nlabel
 
     def __call__(self, tensor):
+        # assert (isinstance(tensor, torch.LongTensor) or isinstance(tensor,
+        #                                                            torch.ByteTensor)), 'tensor needs to be LongTensor'
         tensor[tensor == self.olabel] = self.nlabel
         return tensor

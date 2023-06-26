@@ -18,6 +18,11 @@ RUN pip install matplotlib
 RUN pip install python-multipart
 RUN pip install tensorboard
 RUN pip install watchdog
+RUN pip install imbalanced-learn
+RUN pip install scikit-image
+
+RUN apt-get install wget -y
+RUN wget -P /root/.cache/torch/hub/checkpoints/ --no-check-certificate https://download.pytorch.org/models/resnet18-5c106cde.pth
 
 ENV PYTHONPATH "/home/lib"
 

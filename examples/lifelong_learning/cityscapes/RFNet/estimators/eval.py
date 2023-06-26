@@ -1,17 +1,14 @@
-import os
-import time
 from tqdm import tqdm
 
 import numpy as np
 import torch
-from torchvision.transforms import ToPILImage
 from PIL import Image
 import cv2
 import torch.backends.cudnn as cudnn
 from sedna.common.log import LOGGER
+from sedna.common.file_ops import FileOps
 
 from dataloaders import make_data_loader
-from dataloaders.utils import Colorize
 from utils.metrics import Evaluator
 from models.rfnet import RFNet
 from models.resnet.resnet_single_scale_single_attention import *
@@ -42,15 +39,18 @@ class Validator(object):
             self.model = torch.nn.DataParallel(
                 self.model, device_ids=self.args.gpu_ids)
             self.model = self.model.cuda()
-            self.model.to(f'cuda:{self.args.gpu_ids[0]}')
+            # self.model.to(f'cuda:{self.args.gpu_ids[0]}')
             cudnn.benchmark = True  # accelarate speed
 
         # load model
-        if self.args.weight_path is not None and os.path.exists(
-                self.args.weight_path):
-            self.new_state_dict = torch.load(self.args.weight_path)
+        if self.args.weight_path is not None:
+            if FileOps.is_remote(self.args.weight_path):
+                self.args.weight_path = FileOps.download(self.args.weight_path)
+            self.new_state_dict = torch.load(self.args.weight_path, \
+                map_location="cpu" if not self.args.cuda else None)
             self.model = load_my_state_dict(
-                self.model, self.new_state_dict['state_dict'])
+                self.model, self.new_state_dict['state_dict'],
+                self.args.cuda)
             self.logger.info(
                 'Model loaded successfully from {}.'.format(
                     self.args.weight_path))
@@ -63,9 +63,9 @@ class Validator(object):
         predictions = []
         for _, (sample, image_name) in enumerate(tbar):
             if self.args.depth:
-                image, depth, target = sample['image'], sample['depth'], sample['label']
+                image, depth = sample['image'], sample['depth']
             else:
-                image, target = sample['image'], sample['label']
+                image = sample['image']
             if self.args.cuda:
                 image = image.cuda()
                 if self.args.depth:
@@ -73,9 +73,10 @@ class Validator(object):
 
             with torch.no_grad():
                 if self.args.depth:
-                    output = self.model(image, depth)
+                    _, output = self.model(image, depth)
                 else:
-                    output = self.model(image)
+                    _, output = self.model(image)
+
             if self.args.cuda:
                 torch.cuda.synchronize()
 
@@ -83,52 +84,7 @@ class Validator(object):
             pred = np.argmax(pred, axis=1)
             predictions.append(pred)
 
-            # Save prediction images
-            pre_colors = Colorize(
-                n=self.args.num_class)(
-                torch.max(
-                    output,
-                    1)[1].detach().cpu().byte())
-            pre_labels = torch.max(output, 1)[1].detach().cpu().byte()
-            for i in range(pre_colors.shape[0]):
-                if not image_name[0]:
-                    img_name = f"test_{time.time()}.png"
-                else:
-                    img_name = os.path.basename(image_name[0])
-
-                if not self.args.merge:
-                    continue
-                merge_label_name = os.path.join(
-                    self.args.merge_label_save_path, img_name)
-                os.makedirs(os.path.dirname(merge_label_name), exist_ok=True)
-                pre_color_image = ToPILImage()(
-                    pre_colors[i])
-                image_merge(image[i], pre_color_image, merge_label_name)
-
-                if not self.args.save_predicted_image:
-                    continue
-                color_label_name = os.path.join(
-                    self.args.color_label_save_path, img_name)
-                label_name = os.path.join(self.args.label_save_path, img_name)
-                os.makedirs(os.path.dirname(color_label_name), exist_ok=True)
-                os.makedirs(os.path.dirname(label_name), exist_ok=True)
-
-                pre_color_image.save(color_label_name)
-
-                pre_label_image = ToPILImage()(pre_labels[i])
-                pre_label_image.save(label_name)
-
         return predictions
-
-
-def image_merge(image, label, save_name):
-    image = ToPILImage()(image.detach().cpu().byte())
-    image = image.resize(label.size, Image.BILINEAR)
-
-    image = image.convert('RGBA')
-    label = label.convert('RGBA')
-    image = Image.blend(image, label, 0.6).resize((424, 240))
-    image.save(save_name)
 
 
 def paint_trapezoid(color):
@@ -189,18 +145,17 @@ def paint_trapezoid(color):
     return img_array
 
 
-def load_my_state_dict(model, state_dict):
+def load_my_state_dict(model, state_dict, is_cuda):
     '''
     custom function to load model when not all dict elements
     '''
-
     own_state = model.state_dict()
     for name, param in state_dict.items():
-        if name not in own_state:
-            print("{} is not in own state".format(name))
+        if is_cuda and not name.startswith("module"):
             name = "module." + name
-            own_state[name].copy_(param)
-        else:
-            own_state[name].copy_(param)
+        elif not is_cuda and name.startswith("module"):
+            name = name.replace("module.", "")
+            
+        own_state[name].copy_(param)
 
     return model

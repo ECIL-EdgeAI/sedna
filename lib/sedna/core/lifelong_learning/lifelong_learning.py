@@ -1,4 +1,4 @@
-# Copyright 2023 The KubeEdge Authors.
+# Copyright 2021 The KubeEdge Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -15,22 +15,24 @@
 import numpy as np
 import os
 
+from collections import Iterable
 from sedna.core.base import JobBase
 from sedna.common.file_ops import FileOps
 from sedna.common.constant import K8sResourceKind, K8sResourceKindStatus, \
     KBResourceConstant
-from sedna.common.config import Context, BaseConfig
+from sedna.common.config import Context
+from sedna.datasources import BaseDataSource
 from sedna.common.class_factory import ClassType, ClassFactory
-from sedna.algorithms.seen_task_learning.seen_task_learning \
-    import SeenTaskLearning
+from sedna.algorithms.seen_task_learning.seen_task_learning import \
+    SeenTaskLearning
 from sedna.algorithms.unseen_task_processing import UnseenTaskProcessing
 from sedna.algorithms.unseen_task_detection.unseen_sample_recognition.\
     unseen_sample_detection import UnseenSampleDetection
 from sedna.service.client import KBClient
-from sedna.core.lifelong_learning.knowledge_management.\
-    cloud_knowledge_management import CloudKnowledgeManagement
-from sedna.core.lifelong_learning.knowledge_management.\
-    edge_knowledge_management import EdgeKnowledgeManagement
+from sedna.algorithms.knowledge_management.cloud_knowledge_management \
+    import CloudKnowledgeManagement
+from sedna.algorithms.knowledge_management.edge_knowledge_management \
+    import EdgeKnowledgeManagement
 
 
 class LifelongLearning(JobBase):
@@ -47,16 +49,12 @@ class LifelongLearning(JobBase):
         An instance with the high-level API that greatly simplifies
         machine learning programming. Estimators encapsulate training,
         evaluation, prediction, and exporting for your model.
-    unseen_estimator : Instance
-        An instance with the high-level API that greatly simplifies mechanism
-        model learning programming. Estimators encapsulate training,
-        evaluation, prediction, and exporting for your mechanism model.
     task_definition : Dict
         Divide multiple tasks based on data,
         see `task_definition.task_definition` for more detail.
     task_relationship_discovery : Dict
         Discover relationships between all tasks, see
-        `task_relationship_discovery.task_relationship_discovery`
+        `task_relationship_discovery.task_relationship_discovery` 
         for more detail.
     task_allocation : Dict
         Mining seen tasks of inference sample,
@@ -69,7 +67,7 @@ class LifelongLearning(JobBase):
         tasks, see `inference_integrate.inference_integrate` for more detail.
     task_update_decision: Dict
         Task update strategy making algorithms,
-        see 'knowledge_management.task_update_decision.task_update_decision'
+        see 'knowledge_management.task_update_decision.task_update_decision' 
         for more detail.
     unseen_task_allocation: Dict
         Mining unseen tasks of inference sample,
@@ -87,7 +85,6 @@ class LifelongLearning(JobBase):
     Examples
     --------
     >>> estimator = XGBClassifier(objective="binary:logistic")
-    >>> unseen_estimator = None
     >>> task_definition = {
             "method": "TaskDefinitionByDataAttr",
             "param": {"attribute": ["season", "city"]}
@@ -117,7 +114,6 @@ class LifelongLearning(JobBase):
         }
     >>> ll_jobs = LifelongLearning(
             estimator,
-            unseen_estimator=None,
             task_definition=None,
             task_relationship_discovery=None,
             task_allocation=None,
@@ -182,15 +178,11 @@ class LifelongLearning(JobBase):
 
         self.cloud_knowledge_management = \
             CloudKnowledgeManagement(
-                config,
-                seen_estimator=e,
-                unseen_estimator=u)
+                config, seen_estimator=e, unseen_estimator=u)
 
         self.edge_knowledge_management = \
             EdgeKnowledgeManagement(
-                config,
-                seen_estimator=e,
-                unseen_estimator=u)
+                config, seen_estimator=e, unseen_estimator=u)
 
         self.start_inference_service = False
 
@@ -211,6 +203,8 @@ class LifelongLearning(JobBase):
 
         self.unseen_sample_detection = None
 
+        self.re_recognize_unseen_samples = None
+
         self.job_kind = K8sResourceKind.LIFELONG_JOB.value
         self.kb_server = KBClient(kbserver=self.config.ll_kb_server)
 
@@ -224,7 +218,7 @@ class LifelongLearning(JobBase):
         Parameters
         ----------
         train_data : BaseDataSource
-            Train data, see `sedna.datasources.BaseDataSource`
+            Train data, see `sedna.datasources.BaseDataSource` 
             for more detail.
         valid_data : BaseDataSource
             Valid data, BaseDataSource or None.
@@ -240,13 +234,11 @@ class LifelongLearning(JobBase):
         """
         is_completed_initilization = \
             str(Context.get_parameters("HAS_COMPLETED_INITIAL_TRAINING",
-                                       "false")).lower()
+                "false")).lower()
 
         if is_completed_initilization == "true":
-            return self.update(train_data,
-                               valid_data=valid_data,
-                               post_process=post_process,
-                               **kwargs)
+            return self.update(train_data, valid_data=valid_data,
+                               post_process=post_process, **kwargs)
 
         callback_func = None
         if post_process is not None:
@@ -265,30 +257,39 @@ class LifelongLearning(JobBase):
         task_index = dict(
             seen_task=seen_task_index,
             unseen_task=unseen_task_index)
+
+        meta_estimators = self.meta_estimator_train(train_data, task_index)
+        task_index["meta_estimators"] = meta_estimators
+
         task_index_url = FileOps.dump(
             task_index, self.cloud_knowledge_management.local_task_index_url)
 
-        task_index = self.cloud_knowledge_management.update_kb(task_index_url)
+        task_index_url = self.cloud_knowledge_management.update_kb(
+            task_index_url)
         res.update(unseen_res)
 
-        task_info_res = \
-            self.cloud_knowledge_management.seen_estimator.model_info(
-                task_index,
-                relpath=self.config.data_path_prefix)
+        task_info_res = self.estimator.model_info(
+            task_index_url,
+            relpath=self.config.data_path_prefix)
+
+        task_info_res = self._generate_taskgrp_info(
+            task_info_res, task_index_url)
+
         self.report_task_info(
             None, K8sResourceKindStatus.COMPLETED.value, task_info_res)
         self.log.info(f"Lifelong learning Train task Finished, "
-                      f"KB index save in {task_index}")
+                      f"KB index save in {task_index_url}")
         return callback_func(self.estimator, res) if callback_func else res
 
-    def update(self, train_data, valid_data=None, post_process=None, **kwargs):
+    def update(self, train_data, valid_data=None,
+               post_process=None, **kwargs):
         """
         fit for update the knowledge based on incremental data.
 
         Parameters
         ----------
         train_data : BaseDataSource
-            Train data, see `sedna.datasources.BaseDataSource`
+            Train data, see `sedna.datasources.BaseDataSource` 
             for more detail.
         valid_data : BaseDataSource
             Valid data, BaseDataSource or None.
@@ -307,21 +308,24 @@ class LifelongLearning(JobBase):
             callback_func = ClassFactory.get_cls(
                 ClassType.CALLBACK, post_process)
 
-        task_index_url = Context.get_parameters(
+        task_index_url = self.get_parameters(
             "CLOUD_KB_INDEX", self.cloud_knowledge_management.task_index)
-        task_index_url = FileOps.join_path(
-            BaseConfig.data_path_prefix, task_index_url)
         index_url = self.cloud_knowledge_management.local_task_index_url
         FileOps.download(task_index_url, index_url)
-        self.log.info(
-            f"Download last task index from {task_index_url} to {index_url}")
 
-        unseen_sample_re_recognition = ClassFactory.get_cls(
+        self.re_recognize_unseen_samples = ClassFactory.get_cls(
             ClassType.UTD, self.unseen_sample_re_recognition["method"])(
             index_url, **self.unseen_sample_re_recognition_param)
 
-        seen_samples, unseen_samples = \
-            unseen_sample_re_recognition(train_data)
+        seen_samples, unseen_samples = self.re_recognize_unseen_samples(
+            train_data)
+
+        # TODO: retrain temporarily
+        # historical_data = self._fetch_historical_data(index_url)
+        # seen_samples.x = np.concatenate(
+        #     (historical_data.x, seen_samples.x, unseen_samples.x), axis=0)
+        # seen_samples.y = np.concatenate(
+        #     (historical_data.y, seen_samples.y, unseen_samples.y), axis=0)
 
         seen_samples.x = np.concatenate(
             (seen_samples.x, unseen_samples.x), axis=0)
@@ -334,25 +338,27 @@ class LifelongLearning(JobBase):
 
         tasks, task_update_strategies = task_update_decision(
             seen_samples, task_type="seen_task")
-        seen_task_index = \
-            self.cloud_knowledge_management.seen_estimator.update(
-                tasks, task_update_strategies, task_index=index_url)
+        seen_task_index = self.cloud_knowledge_management.seen_estimator.\
+            update(tasks, task_update_strategies, task_index=index_url)
 
         tasks, task_update_strategies = task_update_decision(
             unseen_samples, task_type="unseen_task")
-        unseen_task_index = \
-            self.cloud_knowledge_management.unseen_estimator.update(
+        unseen_task_index = self.cloud_knowledge_management.\
+            unseen_estimator.update(
                 tasks, task_update_strategies, task_index=index_url)
 
-        task_index = {
-            "seen_task": seen_task_index,
-            "unseen_task": unseen_task_index,
-        }
+        task_index = dict(
+            seen_task=seen_task_index,
+            unseen_task=unseen_task_index)
+
+        meta_estimators = self.meta_estimator_train(train_data, task_index)
+
+        task_index["meta_estimators"] = meta_estimators
 
         task_index = self.cloud_knowledge_management.update_kb(task_index)
 
-        task_info_res = \
-            self.cloud_knowledge_management.seen_estimator.model_info(
+        task_info_res = self.cloud_knowledge_management.\
+            seen_estimator.model_info(
                 task_index,
                 relpath=self.config.data_path_prefix)
 
@@ -371,7 +377,7 @@ class LifelongLearning(JobBase):
         Parameters
         ----------
         data : BaseDataSource
-            valid data, see `sedna.datasources.BaseDataSource`
+            valid data, see `sedna.datasources.BaseDataSource` 
             for more detail.
         kwargs: Dict
             parameters for `estimator` evaluate, Like:
@@ -387,23 +393,25 @@ class LifelongLearning(JobBase):
 
         task_index_url = Context.get_parameters(
             "MODEL_URLS", self.cloud_knowledge_management.task_index)
-        index_url = self.cloud_knowledge_management.local_task_index_url
-        if not os.path.exists(index_url):
-            self.log.info(
-                f"Download kb index from {task_index_url} to {index_url}")
-            FileOps.download(task_index_url, index_url)
+        local_index_url = self.cloud_knowledge_management.local_task_index_url
+        if not os.path.exists(local_index_url):
+            self.log.info(f"Download kb index from {task_index_url} \
+                    to {local_index_url}")
+            FileOps.download(task_index_url, local_index_url)
 
-        res, index_file = self._task_evaluation(
-            data, task_index=index_url, **kwargs)
+        res, index_file, tasks_detail = self._task_evaluation(
+            data, task_index=local_index_url, **kwargs)
         self.log.info("Task evaluation finishes.")
 
         FileOps.upload(index_file, self.cloud_knowledge_management.task_index)
-        self.log.info(
-            f"Upload kb index from {index_file} to \
-            {self.cloud_knowledge_management.task_index}")
+        self.log.info(f"Upload kb index from {index_file} to \
+                {self.cloud_knowledge_management.task_index}")
         task_info_res = self.estimator.model_info(
             self.cloud_knowledge_management.task_index, result=res,
             relpath=self.config.data_path_prefix)
+        task_info_res = self._generate_taskgrp_info(
+            task_info_res, self.cloud_knowledge_management.task_index,
+            tasks_detail=tasks_detail)
         self.report_task_info(
             None,
             K8sResourceKindStatus.COMPLETED.value,
@@ -411,9 +419,8 @@ class LifelongLearning(JobBase):
             kind="eval")
         return callback_func(res) if callback_func else res
 
-    def inference(self,
-                  data=None,
-                  post_process=None,
+    def inference(self, data=None, post_process=None,
+                  seen_sample_postprocess=None,
                   unseen_sample_postprocess=None,
                   **kwargs):
         """
@@ -427,6 +434,9 @@ class LifelongLearning(JobBase):
         post_process: function
             function or a registered method,  effected after `estimator`
             prediction, like: label transform.
+        seen_sample_postprocess: function
+            function or a registered method, effected when seen sample
+            inference results need to be saved systematically.
         unseen_sample_postprocess: function
             function or a registered method, effected when unseen samples
             need to be saved
@@ -457,21 +467,31 @@ class LifelongLearning(JobBase):
             self.edge_knowledge_management.update_kb(index_url)
 
         if not self.start_inference_service:
+            self.edge_knowledge_management.unseen_sample_postprocess = unseen_sample_postprocess
+            self.edge_knowledge_management.seen_sample_postprocess = seen_sample_postprocess
             self._start_inference_service()
             self.start_inference_service = True
 
         seen_samples, unseen_samples = self.recognize_unseen_samples(
             data, **kwargs)
+        if isinstance(seen_samples, Iterable):
+            seen_samples, seen_params = seen_samples[0], seen_samples[1:]
+        if isinstance(unseen_samples, Iterable):
+            unseen_samples, unseen_params = unseen_samples[0], \
+                unseen_samples[1:]
+
         if unseen_samples.x is not None and unseen_samples.num_examples() > 0:
             self.edge_knowledge_management.log.info(
                 f"Unseen task is detected.")
             unseen_res, unseen_tasks = \
                 self.edge_knowledge_management.unseen_estimator.predict(
                     unseen_samples,
-                    task_index=self.edge_knowledge_management.task_index)
+                    task_index=self.edge_knowledge_management.task_index,
+                    unseen_params=unseen_params)
 
             self.edge_knowledge_management.save_unseen_samples(
-                unseen_samples, post_process=unseen_sample_postprocess)
+                unseen_samples,
+                unseen_params=unseen_params)
 
             res = unseen_res
             tasks.extend(unseen_tasks)
@@ -488,8 +508,11 @@ class LifelongLearning(JobBase):
                     data=seen_samples, post_process=post_process,
                     task_index=self.edge_knowledge_management.task_index,
                     task_type="seen_task",
-                    **kwargs
-                )
+                    seen_params=seen_params,
+                    **kwargs)
+
+            self.edge_knowledge_management.save_seen_samples(seen_samples, seen_res)
+
             res = np.concatenate((res, seen_res)) if res else seen_res
             tasks.extend(seen_tasks)
 
@@ -504,6 +527,25 @@ class LifelongLearning(JobBase):
 
         return res, is_unseen_task, tasks
 
+    def meta_estimator_train(self, samples, task_index):
+        if isinstance(task_index, str):
+            task_index = FileOps.load(task_index)
+
+        meta_estimators = {}
+
+        if not callable(self.recognize_unseen_samples):
+            self.recognize_unseen_samples = ClassFactory.get_cls(
+                ClassType.UTD,
+                self.unseen_sample_recognition["method"])(
+                task_index,
+                estimator=self.edge_knowledge_management.
+                    seen_estimator.estimator.base_model,
+                **self.unseen_sample_recognition_param)
+            meta_estimators["unseen_sample_recognition_estimator"] = \
+                self.recognize_unseen_samples(samples)
+
+        return meta_estimators
+
     def _start_inference_service(self):
         if not self.unseen_sample_detection:
             self.unseen_sample_detection = UnseenSampleDetection(
@@ -512,28 +554,26 @@ class LifelongLearning(JobBase):
             self.unseen_sample_detection.start()
 
         if not callable(self.recognize_unseen_samples):
-            self.recognize_unseen_samples = \
-                ClassFactory.get_cls(
-                    ClassType.UTD,
-                    self.unseen_sample_recognition["method"])(
-                    self.edge_knowledge_management.task_index,
-                    estimator=self.edge_knowledge_management.
-                        seen_estimator.estimator.base_model,
-                    **self.unseen_sample_recognition_param)
+            self.recognize_unseen_samples = ClassFactory.get_cls(
+                ClassType.UTD,
+                self.unseen_sample_recognition["method"])(
+                self.edge_knowledge_management.task_index,
+                estimator=self.edge_knowledge_management.
+                    seen_estimator.estimator.base_model,
+                **self.unseen_sample_recognition_param)
 
         if not self.edge_knowledge_management.pinned_service_start:
             self.edge_knowledge_management.start_services()
 
     def _task_evaluation(self, data, **kwargs):
-        res, tasks_detail = \
-            self.cloud_knowledge_management.seen_estimator.evaluate(
-                data=data,
-                **kwargs)
+        res, tasks_detail = self.cloud_knowledge_management.\
+            seen_estimator.evaluate(
+                data=data, **kwargs)
         drop_task = self.cloud_knowledge_management.evaluate_tasks(
-            tasks_detail,
-            **kwargs)
+            tasks_detail, **kwargs)
 
-        index_file = self.kb_server.update_task_status(drop_task, new_status=0)
+        index_file = self.kb_server.update_task_status(drop_task,
+                                                       new_status=0)
 
         if not index_file:
             self.log.error(f"KB update Fail !")
@@ -542,4 +582,53 @@ class LifelongLearning(JobBase):
         else:
             self.log.info(f"Deploy {index_file} to the edge.")
 
-        return res, index_file
+        return res, index_file, tasks_detail
+
+    def _fetch_historical_data(self, task_index):
+        if isinstance(task_index, str):
+            task_index = FileOps.load(task_index)
+
+        samples = BaseDataSource(data_type="train")
+
+        for task_group in task_index["seen_task"]["task_groups"]:
+            if isinstance(task_group.samples, BaseDataSource):
+                _samples = task_group.samples
+            else:
+                _samples = FileOps.load(task_group.samples.data_url)
+
+            samples.x = _samples.x if samples.x is None else np.concatenate(
+                (samples.x, _samples.x), axis=0)
+            samples.y = _samples.y if samples.y is None else np.concatenate(
+                (samples.y, _samples.y), axis=0)
+
+        return samples
+
+    def _generate_taskgrp_info(self, task_info_res, task_index, **kwargs):
+        if isinstance(task_index, str):
+            task_index = FileOps.load(task_index)
+
+        for task_info_dict in task_info_res:
+            task_grps = task_index["seen_task"]["task_groups"]
+            task_info_dict["number_of_model"] = len(task_grps)
+
+            # obtain unseen samples from OBS, not from lib
+            task_info_dict["number_of_unseen_sample"] = 0
+            # obtain labeled unseen samples from OBS, not from lib
+            task_info_dict["number_of_labeled_unseen_sample"] = \
+                sum(task_grp.samples.num_examples(
+                ) for task_grp in task_grps)
+
+            current_metric = {}
+            tasks_detail = kwargs.get("tasks_detail", None)
+            if tasks_detail:
+                for task in tasks_detail:
+                    current_metric[task.entry] = task.scores
+            else:
+                for task_grp in task_grps:
+                    current_metric[task_grp.model.entry] = \
+                        task_grp.model.result
+            task_info_dict["current_metric"] = current_metric
+
+            task_info_dict["classes"] = \
+                self.estimator.estimator.base_model.classes
+        return task_info_res

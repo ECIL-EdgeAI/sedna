@@ -1,17 +1,3 @@
-# Copyright 2023 The KubeEdge Authors.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
 import os
 
 import cv2
@@ -21,16 +7,27 @@ from PIL import Image
 from torchvision import transforms
 from torch.utils.data import DataLoader
 from torchvision import transforms
+from torchvision.transforms import ToPILImage
+from sklearn.model_selection import train_test_split
 from sedna.common.config import Context
+from sedna.datasources import BaseDataSource
 from sedna.common.file_ops import FileOps
 from sedna.common.log import LOGGER
-from sedna.common.config import BaseConfig
 
 from dataloaders import custom_transforms as tr
+from dataloaders.utils import Colorize
 from utils.args import TrainingArguments, EvaluationArguments
 from estimators.train import Trainer
 from estimators.eval import Validator, load_my_state_dict
 from accuracy import accuracy
+
+os.environ["BACKEND_TYPE"] = ''
+
+classes = ["road", "sidewalk", "building", "wall", "fence", "pole", "light",
+           "sign", "vegetation", "terrain", "sky", "pedestrian", "rider",
+           "car", "truck", "bus", "train", "motorcycle", "bicycle", "stair",
+           "curb", "ramp", "runway", "flowerbed", "door", "CCTV camera",
+           "Manhole", "hydrant", "belt", "dustbin", "ignore"]
 
 
 def preprocess_url(image_urls):
@@ -50,6 +47,8 @@ def preprocess_url(image_urls):
 
         sample = {'image': _img, 'depth': _depth, 'label': _img}
         composed_transforms = transforms.Compose([
+            # tr.CropBlackArea(),
+            # tr.FixedResize(size=self.args.crop_size),
             tr.Normalize(
                 mean=(
                     0.485, 0.456, 0.406), std=(
@@ -80,43 +79,42 @@ def preprocess_frames(frames):
 
 class Estimator:
     def __init__(self, **kwargs):
+        self.cuda = torch.cuda.is_available()
         self.train_args = TrainingArguments(**kwargs)
         self.val_args = EvaluationArguments(**kwargs)
+
+        self.classes = kwargs.get("classes", classes)
 
         self.train_args.resume = Context.get_parameters(
             "PRETRAINED_MODEL_URL", None)
         self.trainer = None
         self.train_model_url = None
 
-        label_save_dir = Context.get_parameters(
-            "INFERENCE_RESULT_DIR",
-            os.path.join(BaseConfig.data_path_prefix,
-                         "inference_results"))
-        self.val_args.color_label_save_path = os.path.join(
-            label_save_dir, "color")
-        self.val_args.merge_label_save_path = os.path.join(
-            label_save_dir, "merge")
-        self.val_args.label_save_path = os.path.join(label_save_dir, "label")
-        self.val_args.weight_path = kwargs.get("weight_path")
         self.validator = Validator(self.val_args)
 
     def train(self, train_data, valid_data=None, **kwargs):
+        if not valid_data:
+            train_ratio = float(Context.get_parameters("train_ratio", 0.9))
+            valid_data = BaseDataSource(data_type="eval")
+            train_data.x, valid_data.x, train_data.y, valid_data.y = \
+                train_test_split(train_data.x, train_data.y,
+                                 train_size=train_ratio)
+
         self.trainer = Trainer(
             self.train_args, train_data=train_data, valid_data=valid_data)
         LOGGER.info("Total epoches: {}".format(self.trainer.args.epochs))
         for epoch in range(
                 self.trainer.args.start_epoch,
                 self.trainer.args.epochs):
-            if epoch == 0 and self.trainer.val_loader:
-                self.trainer.validation(epoch)
+            # if epoch == 0 and self.trainer.val_loader:
+            #     self.trainer.validation(epoch)
             self.trainer.training(epoch)
 
-            if self.trainer.args.no_val and \
-                (epoch % self.trainer.args.eval_interval ==
-                    (self.trainer.args.eval_interval - 1) or
-                 epoch == self.trainer.args.epochs - 1):
-                # save checkpoint when it meets eval_interval
-                # or the training finishes
+            if self.trainer.args.no_val and (epoch %
+                                             self.trainer.args.eval_interval == (
+                                                 self.trainer.args.eval_interval -
+                                                 1) or epoch == self.trainer.args.epochs - 1):
+                # save checkpoint when it meets eval_interval or the training finishes
                 is_best = False
                 train_model_url = self.trainer.saver.save_checkpoint({
                     'epoch': epoch + 1,
@@ -125,11 +123,15 @@ class Estimator:
                     'best_pred': self.trainer.best_pred,
                 }, is_best)
 
+            # if not self.trainer.args.no_val and \
+            #         epoch % self.train_args.eval_interval == (self.train_args.eval_interval - 1) \
+            #         and self.trainer.val_loader:
+            #     self.trainer.validation(epoch)
+
         self.trainer.writer.close()
         self.train_model_url = train_model_url
 
-        return {"mIoU": 0 if not valid_data
-                else self.trainer.validation(epoch)}
+        return {"mIoU": self.trainer.validation(epoch)}
 
     def predict(self, data, **kwargs):
         if isinstance(data[0], dict):
@@ -152,14 +154,18 @@ class Estimator:
 
     def load(self, model_url, **kwargs):
         if model_url:
-            self.validator.new_state_dict = torch.load(model_url)
+            LOGGER.info(f"Load model from {model_url}")
+            self.validator.new_state_dict = \
+                torch.load(model_url,
+                           map_location="cpu" if not self.cuda else None)
             self.validator.model = load_my_state_dict(
                 self.validator.model,
-                self.validator.new_state_dict['state_dict'])
+                self.validator.new_state_dict['state_dict'],
+                self.cuda)
 
             self.train_args.resume = model_url
         else:
-            raise Exception("model url does not exist.")
+            raise Exception("Model url does not exist.")
 
     def save(self, model_path=None):
         if not model_path:
@@ -167,3 +173,41 @@ class Estimator:
             return self.train_model_url
 
         return FileOps.upload(self.train_model_url, model_path)
+
+
+def save_predicted_image(img_url, image, pred, image_name):
+    '''
+    Sample post processing function invoked by Sedna 
+    to upload the inference results
+    '''
+
+    merge_label_name = os.path.join(img_url, f"merge_{image_name}")
+    color_label_name = os.path.join(img_url, f"color_{image_name}")
+    label_name = os.path.join(img_url, f"label_{image_name}")
+    os.makedirs(os.path.dirname(merge_label_name), exist_ok=True)
+    os.makedirs(os.path.dirname(color_label_name), exist_ok=True)
+    os.makedirs(os.path.dirname(label_name), exist_ok=True)
+
+    # Save prediction images
+    pred = torch.from_numpy(pred).byte()
+    pre_color = Colorize()(pred)
+    pre_label = pred
+
+    pre_color_image = ToPILImage()(pre_color[0])
+    image_merge(image, pre_color_image, merge_label_name)
+    pre_color_image.save(color_label_name)
+    pre_label_image = ToPILImage()(pre_label)
+    pre_label_image.save(label_name)
+
+    return (merge_label_name, color_label_name, label_name)
+
+
+def image_merge(image, label, save_name):
+    '''
+    Merge original image and predicted image into one image
+    '''
+    image = image.resize(label.size, Image.BILINEAR)
+    image = image.convert('RGBA')
+    label = label.convert('RGBA')
+    image = Image.blend(image, label, 0.6).resize(image.size)
+    image.save(save_name)

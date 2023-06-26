@@ -1,4 +1,4 @@
-# Copyright 2023 The KubeEdge Authors.
+# Copyright 2021 The KubeEdge Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,4 +13,6 @@
 # limitations under the License.
 
 from . import unseen_sample_recognition
+from . import unseen_sample_recognition_robotic
+from . import ood_identification
 from . import unseen_sample_detection

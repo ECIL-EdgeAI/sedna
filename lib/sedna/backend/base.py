@@ -98,7 +98,7 @@ class BackendBase:
             model_path = model_url
         return model_path
 
-    def model_info(self, model, relpath=None, result=None):
+    def model_info(self, model, relpath=None, result=None, **kwargs):
         _, _type = os.path.splitext(model)
         if relpath:
             _url = FileOps.remove_path_prefix(model, relpath)
