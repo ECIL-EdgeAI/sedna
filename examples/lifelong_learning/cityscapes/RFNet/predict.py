@@ -12,7 +12,6 @@ import os
 # os.environ["OOD_model"] = "https://kubeedge.obs.cn-north-1.myhuaweicloud.com/sedna-robo/models/garden.model"
 # os.environ["ramp_detection"] = "https://kubeedge.obs.cn-north-1.myhuaweicloud.com/sedna-robo/models/garden.pth"
 
-
 from PIL import Image
 from sedna.datasources import BaseDataSource
 from sedna.core.lifelong_learning import LifelongLearning

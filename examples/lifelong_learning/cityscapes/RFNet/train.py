@@ -7,7 +7,6 @@ import os
 # os.environ["CLOUD_KB_INDEX"] = "s3://kubeedge/sedna-robo/kb/index.pkl"
 # os.environ["HAS_COMPLETED_INITIAL_TRAINING"] = "true"
 
-
 from PIL import Image
 from torchvision import transforms
 from sedna.core.lifelong_learning import LifelongLearning
@@ -100,7 +99,7 @@ def train(estimator, train_data):
 
 
 def run():
-    estimator = Estimator(num_class=31, epochs=1)
+    estimator = Estimator()
     train_dataset_url = BaseConfig.train_dataset_url
     train_data = TxtDataParse(data_type="train", func=_load_txt_dataset)
     train_data.parse(train_dataset_url, use_raw=False)
