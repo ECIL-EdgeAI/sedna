@@ -55,7 +55,7 @@ class TrainingArguments(Arguments):
 
         self.loss_type = kwargs.pop('loss_type', "ce")  # loss function type
         # number of epochs to train
-        self.epochs = int(kwargs.get("epochs", 200))
+        self.epochs = int(kwargs.get("epochs", 1))
         # the index of epoch to start training
         self.start_epoch = int(kwargs.get("start_epoch", 0))
         self.use_balanced_weights = kwargs.get(
