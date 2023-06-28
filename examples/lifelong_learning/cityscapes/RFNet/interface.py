@@ -80,9 +80,9 @@ def preprocess_frames(frames):
 class Estimator:
     def __init__(self, **kwargs):
         self.cuda = torch.cuda.is_available()
-        self.classes = kwargs.get("classes", classes)
-
         kwargs.update(Context.parameters)
+        
+        self.classes = kwargs.get("classes", classes)
         self.train_args = TrainingArguments(**kwargs)
         self.val_args = EvaluationArguments(**kwargs)
 
