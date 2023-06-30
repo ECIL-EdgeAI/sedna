@@ -256,15 +256,6 @@ class MoveBase(Navigation):  # noqa
             self.set_vel(.1, 0)
         self.stop()
 
-    def speed(self, linear: float = 0., rotational: float = 0.):
-        from geometry_msgs.msg import Twist
-
-        msg = Twist()
-        msg.linear.x = linear
-        msg.angular.z = rotational
-
-        self.vel_pub.publish(msg)
-
     def get_front_distance(self, degree: int = 10) -> float:
         if self.scan_msg is not None:
             all_data = getattr(self.scan_msg, "ranges", [])

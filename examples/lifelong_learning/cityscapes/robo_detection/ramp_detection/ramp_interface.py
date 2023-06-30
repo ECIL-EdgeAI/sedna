@@ -61,7 +61,7 @@ class Estimator:
         self.curr_gait = ""
         self.fps = 30
         self.inferDangerCount = 0
-        self.hold_time = 3
+        self.hold_time = 1
         self.freq = cv2.getTickFrequency()
         self.last_change = int(time.time())
         self._poly = np.array([
@@ -78,135 +78,32 @@ class Estimator:
                             "car": (114, 0, 0), "fence": (123, 110, 0),
                             "other": (0, 153, 204), "curb": (255, 0, 0)}
 
-    def parse_result(self, label, count):
-        count_d = dict(zip(label, count))
-        curb_count = count_d.get(19, 0)
-        if curb_count / np.sum(count) > 0.3:
-            return "curb"
-        r = sorted(label, key=count_d.get, reverse=True)[0]
-        try:
-            c = self.label_map[r]
-        except:
-            c = "other"
-        return c
-
-    def update_poly(self, input_height, input_width):
-        if ((input_height == self.input_height) and
-                (self.input_width == input_width)):
-            return
-        self.input_height = input_height
-        self.input_width = input_width
-        self._poly = np.array([
-            [0, self.input_height],
-            [self.input_width, self.input_height],
-            [int(0.764 * self.input_width + .5),
-             int(0.66 * self.input_height + .5)],
-            [int(0.236 * self.input_width + .5),
-             int(0.66 * self.input_height + .5)]
-        ], dtype=np.int32)
-
     def predict(self, rgb, depth):
-        t1 = cv2.getTickCount()
         image = cv2.imencode('.jpg', rgb)[1].tobytes()
         depth = cv2.imencode('.jpg', depth)[1].tobytes()
-        orig_h, orig_w, _ = rgb.shape
         result = http_request(
             self.endpoint, method="POST", files={
                 "image": ('rgb.jpg', image, "image/jpeg"),
                 "depth": ('dep.jpg', depth, "image/jpeg"),
             }
         )
-        t2 = cv2.getTickCount()
-        time1 = (t2 - t1) / self.freq
-        self.fps = round(1 / time1, 2)
-
         if not isinstance(result, dict):
             return
+
         msg = result.get("msg", "")
-        r = result.get("result", {})
+        location = result.get("result", None)
 
         code = int(result.get("code", 1)) if str(
             result.get("code", 1)).isdigit() else 1
+
         if len(msg) and code != 0:
             LOGGER.warning(msg)
             return
-        #if not r.get("box", []):
-        #    LOGGER.warning("loss result")
-        #    return
-        _type = int(r.get("type", 1))
-        #results = np.array(r["box"])[0]
 
-        if _type == 1:
-            self.curr_gait = "stop"
-            LOGGER.warning("unknown result")
-        step = 1.0 / self.fps
-        #h, w = results.shape
-        #self.update_poly(h, w)
-
-        #closest = np.array([
-        #    [0, int(self.input_height)],
-        #    [int(self.input_width),
-        #     int(self.input_height)],
-        #    [int(0.118 * self.input_width + .5),
-        #     int(.8 * self.input_height + .5)],
-        #    [int(0.882 * self.input_width + .5),
-        #     int(.8 * self.input_height + .5)],
-        #])
-        #future = np.array([
-        #    [int(0.118 * self.input_width + .5),
-        #     int(.8 * self.input_height + .5)],
-        #    [int(0.882 * self.input_width + .5),
-        #     int(.8 * self.input_height + .5)],
-        #    [int(.765 * self.input_width + .5),
-        #     int(.66 * self.input_height + .5)],
-        #    [int(.235 * self.input_width + .5),
-        #     int(.66 * self.input_height + .5)]
-        #])
-        #mask = np.zeros((h, w), dtype=np.uint8)
-
-        #mask = cv2.fillPoly(mask, [closest], 1)
-        #mask = cv2.fillPoly(mask, [future], 2)
-
-        #d1, c1 = np.unique(results[mask == 1], return_counts=True)
-        #d2, c2 = np.unique(results[mask == 2], return_counts=True)
-        #c = self.parse_result(d1, c1)
-        #f = self.parse_result(d2, c2)
-        c = r.get("curr", "unknown")
-        f = r.get("future", "unknown")
-        see = f"{c}->{f}"
-        if c == "curb" or f == "curb" or c != f:
-            self.inferDangerCount = min(self.inferDangerCount + step, 10)
-        else:
-            self.inferDangerCount = max(self.inferDangerCount - 2 * step, 0)
-
-        if self.inferDangerCount > 1:
-            self.curr_gait = "up-stair"
-            self.last_change = int(time.time())
-        elif self.inferDangerCount == 0:
-            now = int(time.time())
-            if now - self.last_change > self.hold_time:
-                self.curr_gait = "trot"
-        color_area = cv2.resize(rgb, (self.input_width, self.input_height))
-        #for inx, label in enumerate(self.label_map):
-        #    color_area[results == inx] = self.label_color.get(label, [0, 0, 0])
-        cv2.polylines(
-            color_area, pts=[self._poly], isClosed=True,
-            color=(0, 255, 0), thickness=5
-        )
-        color_area = cv2.resize(color_area, (orig_w, orig_h),
-                                interpolation=cv2.INTER_LINEAR)
-        output = cv2.addWeighted(rgb, 0.7, color_area, 0.3, 0)
-        cv2.putText(
-            output,
-            f'{self.curr_gait} |{see} FPS: {self.fps}',
-            (30, 50),
-            cv2.FONT_HERSHEY_SIMPLEX, 0.8,
-            (0, 255, 0), 2, cv2.LINE_AA)
-        return output
-
+        return location
 
 if __name__ == '__main__':
-    os.environ["BIG_MODEL_IP"] = "http://100.94.29.220"
+    os.environ["BIG_MODEL_IP"] = "http://94.74.91.114"
     os.environ["BIG_MODEL_PORT"] = "30001"
     f1 = "./E1_door.1716.rgb.png"
     f2 = "./E1_door.1716.depth.png"
