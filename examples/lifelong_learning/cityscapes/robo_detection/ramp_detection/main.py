@@ -11,16 +11,16 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
 from cv_bridge import CvBridge
 from robosdk.core import Robot
 from robosdk.utils.context import Context
+from robosdk.utils.constant import GaitType
 from robosdk.msgs.sender.ros import RosMessagePublish
 
 from ramp_detection.interface import Estimator
 
 
-class Detection:
+class CurbDetection:
     def __init__(self):
         self.robot = Robot(name="x20", config="ysc_x20")
         self.segment = Estimator()
@@ -38,9 +38,23 @@ class Detection:
             img, dep = self.robot.camera.get_rgb_depth()
             if img is None:
                 continue
-            result = self.segment.predict(img, depth=dep)
-            print(result)
+
+            r = self.segment.predict(img, depth=dep)
+            if r is not None:
+                self.publish.send("curb_detection", r)
+            else:
+                self.publish.send("curb_detection", img)
+            if self.segment.curr_gait == "up-stair":
+                self.robot.logger.info("match curb")
+                self.robot.control.change_gait(GaitType.UPSTAIR)
+            elif self.segment.curr_gait == "trot":
+                self.robot.logger.info("unmatch curb")
+                self.robot.control.change_gait(GaitType.TROT)
+            elif self.segment.curr_gait == "stop":
+                self.robot.logger.info("stop")
+                self.robot.navigation.stop()
+
 
 if __name__ == '__main__':
-    project = Detection()
+    project = CurbDetection()
     project.run()

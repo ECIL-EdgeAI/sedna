@@ -177,7 +177,7 @@ class DeepRoboticsControl(LeggedController):  # noqa
             self.logger.info(f"change gait to {gait.name}, now {now_gait.name}")
 
             self.commander.sendSimple()
-            time.sleep(1.0)
+            time.sleep(0.9)
             now_gait = self.get_curr_gait()
             if now_gait == gait:
                 break
