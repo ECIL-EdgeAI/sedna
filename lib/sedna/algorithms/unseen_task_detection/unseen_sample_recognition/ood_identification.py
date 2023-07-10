@@ -48,7 +48,7 @@ class OodIdentification:
         self.task_group_key = KBResourceConstant.TASK_GROUPS.value
         self.extractor_key = KBResourceConstant.EXTRACTOR.value
 
-        self.base_model = kwargs.get("base_model") # (num_class=31)
+        self.base_model = kwargs.get("base_model")
         self.backup_model = kwargs.get('OOD_backup_model')
         if not self.backup_model:
             self.seen_extractor = task_index.get(
@@ -116,6 +116,7 @@ class OodIdentification:
 
         tasks = []
         OOD_scores = []
+        ood_predictions = []
         for inx, df in enumerate(samples):
             m = models[inx]
             if not isinstance(m, Model):
@@ -126,18 +127,19 @@ class OodIdentification:
                     evaluator.load(m.model)
             else:
                 evaluator = m.model
-            InD_list, OoD_list, pred, ood_scores = self.ood_predict(
+            InD_list, OoD_list, pred, ood_pred, ood_scores = self.ood_predict(
                 evaluator, df.x, **kwargs)
             seen_task_samples.x.extend(InD_list)
             unseen_task_samples.x.extend(OoD_list)
             OOD_scores.extend(ood_scores)
+            ood_predictions.extend(ood_pred)
             task = Task(entry=m.entry, samples=df)
             task.result = pred
             task.model = m
             tasks.append(task)
         res = self._inference_integrate(tasks)
         return (seen_task_samples, res, tasks), \
-            (unseen_task_samples, OOD_scores)
+            (unseen_task_samples, ood_predictions, OOD_scores)
 
     def ood_predict(self, evaluator, samples, **kwargs):
         data = self.preprocess_func(samples)
@@ -150,7 +152,7 @@ class OodIdentification:
         data_loader = evaluator.estimator.validator.test_loader
 
         OoD_list, InD_list = [], []
-        predictions = []
+        predictions, ood_predictions = [], []
         ood_scores = []
 
         seg_model.eval()
@@ -202,11 +204,12 @@ class OodIdentification:
                 if OOD_score > self.OOD_thresh:
                     OoD_list.append(samples[i])
                     ood_scores.append(OOD_score)
+                    ood_predictions.append(OOD_pred_show[j])
                 else:
                     InD_list.append(samples[i])
                     predictions.append(pred.data.cpu().numpy())
 
-        return InD_list, OoD_list, predictions, ood_scores
+        return InD_list, OoD_list, predictions, ood_predictions, ood_scores
 
     def train(self, **kwargs):
         ood_data_path = os.path.join(BaseConfig.data_path_prefix, 'ood_data')
