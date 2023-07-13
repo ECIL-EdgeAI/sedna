@@ -57,9 +57,6 @@ job_name=robo-demo
 Before this, users must generate the S3_ENDPOINT, ACCESS_KEY_ID and SECRET_ACCESS_KEY of their own s3 accounts and set environment
  variables S3_ENDPOINT, ACCESS_KEY_ID and SECRET_ACCESS_KEY.
 ```
-S3_ENDPOINT=obs.cn-north-1.myhuaweicloud.com
-ACCESS_KEY_ID=8CH9JVNJF6TGK2IAYUDR
-
 action=${1:-create}
 
 kubectl $action -f - <<EOF
