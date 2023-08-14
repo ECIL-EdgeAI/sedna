@@ -57,9 +57,6 @@ job_name=robo-demo
 Before this, users must generate the S3_ENDPOINT, ACCESS_KEY_ID and SECRET_ACCESS_KEY of their own s3 accounts and set environment
  variables S3_ENDPOINT, ACCESS_KEY_ID and SECRET_ACCESS_KEY.
 ```
-S3_ENDPOINT=obs.cn-north-1.myhuaweicloud.com
-ACCESS_KEY_ID=8CH9JVNJF6TGK2IAYUDR
-
 action=${1:-create}
 
 kubectl $action -f - <<EOF
@@ -119,6 +116,8 @@ spec:
             env:
               - name: "train_ratio"
                 value: "0.9"
+              - name: "gpu_ids"
+                value: "0"
             resources:
               limits:
                 cpu: 6
@@ -158,6 +157,8 @@ spec:
                 value: "<"
               - name: "model_threshold"  # Threshold for filtering deploy models
                 value: "0"
+              - name: "gpu_ids"
+                value: "0"
             resources:
               limits:
                 cpu: 6
@@ -179,6 +180,8 @@ spec:
           # args: ["while true; do sleep 2000; done;"]
           args: ["predict.py"]
           env:
+            - name: "gpu_ids"
+              value: "0"
             - name: "test_data"
               value: "/home/data/test_data"
             - name: "unseen_save_url"

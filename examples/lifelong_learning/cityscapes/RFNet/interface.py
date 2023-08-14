@@ -181,13 +181,14 @@ def save_predicted_image(img_url, image, pred, image_name):
     Sample post processing function invoked by Sedna 
     to upload the inference results
     '''
+    
+    raw_image_name = os.path.join(img_url, image_name)
+    image.save(raw_image_name)
+    print(f"raw img is {image}")
 
     merge_label_name = os.path.join(img_url, f"merge_{image_name}")
     color_label_name = os.path.join(img_url, f"color_{image_name}")
     label_name = os.path.join(img_url, f"label_{image_name}")
-    os.makedirs(os.path.dirname(merge_label_name), exist_ok=True)
-    os.makedirs(os.path.dirname(color_label_name), exist_ok=True)
-    os.makedirs(os.path.dirname(label_name), exist_ok=True)
 
     # Save prediction images
     pred = torch.from_numpy(pred).byte()
@@ -200,7 +201,7 @@ def save_predicted_image(img_url, image, pred, image_name):
     pre_label_image = ToPILImage()(pre_label)
     pre_label_image.save(label_name)
 
-    return (merge_label_name, color_label_name, label_name)
+    return (raw_image_name, merge_label_name, color_label_name, label_name)
 
 
 def image_merge(image, label, save_name):

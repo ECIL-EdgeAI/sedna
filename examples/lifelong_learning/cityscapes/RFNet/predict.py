@@ -2,22 +2,23 @@ import time
 import os
 # os.environ["MODEL_URLS"] = "s3://kubeedge/sedna-robo/kb/index.pkl"
 # os.environ["KB_SERVER"] = "http://127.0.0.1:9020"
-# os.environ["test_data"] = "/data/test_data"
+# os.environ["test_data"] = "/home/lsq/RFNet/e1_labeled_0/2048x1024/rgb/test/20220420_front"
 # os.environ["unseen_save_url"] = "s3://kubeedge/sedna-robo/unseen_samples/"
 # os.environ["seen_save_url"] = "s3://kubeedge/sedna-robo/seen_samples/"
 # os.environ["metadata_url"] = "s3://kubeedge/sedna-robo/metadata/"
 # os.environ["OUTPUT_URL"] = "s3://kubeedge/sedna-robo/"
 
-# os.environ["OOD_thresh"] = "0.45"
+# os.environ["OOD_thresh"] = "0.5"
 # os.environ["OOD_model"] = "https://kubeedge.obs.cn-north-1.myhuaweicloud.com/sedna-robo/models/garden.model"
 # os.environ["ramp_detection"] = "https://kubeedge.obs.cn-north-1.myhuaweicloud.com/sedna-robo/models/garden.pth"
 
+
+import numpy as np
 from PIL import Image
 from sedna.datasources import BaseDataSource
 from sedna.core.lifelong_learning import LifelongLearning
 from sedna.common.config import Context
 from sedna.common.log import LOGGER
-from sedna.common.file_ops import FileOps
 
 from interface import Estimator, preprocess_frames, save_predicted_image
 
@@ -38,13 +39,30 @@ def postprocess(samples):
     return image_names, imgs
 
 
-def unseen_sample_postprocess(img_url, img, img_name):
-    img_url = os.path.join(img_url, img_name)
+def unseen_sample_postprocess(img_url, img, ood_pred, img_name):
     if isinstance(img, str):
-        return FileOps.upload(img, img_url)
-    else:
-        img.save(img_url)
-        return img_url
+        img = Image.open(img)
+
+    if len(ood_pred) > 0:
+        img = img.convert("RGBA")
+
+        colored_img = np.array(Image.new("RGBA", img.size, (255, 255, 255, 0)))
+        changed_pixel = ood_pred[0]
+        colored_img[changed_pixel == 1] = [255, 0, 0, 150]
+        colored_img = Image.fromarray(colored_img)
+
+        img_color = Image.alpha_composite(img, colored_img)
+        img_color = img_color.convert("RGB")
+        img_color_name, ext = os.path.splitext(img_name)
+        img_color_name = "{}_color{}".format(img_color_name, ext)
+        img_color_url = os.path.join(img_url, img_color_name)
+        img_color.save(img_color_url)
+
+        img = img.convert("RGB")
+
+    img_url = os.path.join(img_url, img_name)
+    img.save(img_url)
+    return img_url, img_color_url
 
 
 def init_ll_job():
@@ -98,7 +116,7 @@ def predict():
     test_data_num = len(test_data)
     count = 0
 
-    # simulate a permenant inference service
+    # Simulate a pinned inference service
     LOGGER.info(f"Inference service starts.")
     while True:
         for i, data in enumerate(test_data):
@@ -108,9 +126,9 @@ def predict():
             img_rgb = Image.open(test_data_url).convert("RGB")
             sample = {'image': img_rgb, "depth": img_rgb, "label": img_rgb}
             predict_data = preprocess(sample)
-            prediction, is_unseen, _ = ll_job.inference(predict_data, \
-                seen_sample_postprocess=save_predicted_image,
-                unseen_sample_postprocess=unseen_sample_postprocess)
+            prediction, is_unseen, _ = ll_job.inference(predict_data,
+                                                        seen_sample_postprocess=save_predicted_image,
+                                                        unseen_sample_postprocess=unseen_sample_postprocess)
             LOGGER.info(f"Image {i + count + 1} is unseen task: {is_unseen}")
             LOGGER.info(
                 f"Image {i + count + 1} prediction result: {prediction}")

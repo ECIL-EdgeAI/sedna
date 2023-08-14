@@ -146,14 +146,17 @@ class EdgeKnowledgeManagement(BaseKnowledgeManagement):
         return meta_estimators
 
     def save_unseen_samples(self, samples, **kwargs):
-        ood_scores = kwargs.get("unseen_params")[0]
+        ood_predictions = kwargs.get("unseen_params")[0]
+        ood_scores = kwargs.get("unseen_params")[1]
+
         for i, sample in enumerate(samples.x):
             sample_id = str(uuid.uuid4())
             if isinstance(sample, dict):
                 img = sample.get("image")
             else:
                 img = sample[0]
-            unseen_sample_info = (sample_id, img, ood_scores[i])
+            unseen_sample_info = (sample_id, img, ood_predictions[i],
+                                  ood_scores[i])
             self.unseen_sample_queue.put(unseen_sample_info)
 
     def save_seen_samples(self, samples, results, **kwargs):
@@ -239,8 +242,8 @@ class UnseenSampleThread(threading.Thread):
     def run(self):
         while True:
             time.sleep(self.check_time)
-            sample_id, img, ood_score = self.unseen_sample_queue.get()
-            unseen_sample_url = self.upload_unseen_sample(img)
+            sample_id, img, ood_pred, ood_score = self.unseen_sample_queue.get()
+            unseen_sample_url = self.upload_unseen_sample(img, ood_pred)
             self.upload_meta_data(sample_id, ood_score, unseen_sample_url)
             LOGGER.info(f"Upload unseen sample to {unseen_sample_url}")
             self.unseen_sample_queue.task_done()
@@ -257,8 +260,8 @@ class UnseenSampleThread(threading.Thread):
         }
         return unseen_sample_metadata
 
-    def upload_unseen_sample(self, img):
-        if not self.post_process:
+    def upload_unseen_sample(self, img, ood_pred):
+        if not callable(self.post_process):
             LOGGER.info("Unseen sample post processing is not callable.")
             return
 
@@ -267,8 +270,12 @@ class UnseenSampleThread(threading.Thread):
         else:
             image_name = os.path.basename(img)
 
-        local_save_url = self.post_process(
-            self.local_unseen_dir, img, image_name)
+        local_save_url, color_local_save_url = self.post_process(
+            self.local_unseen_dir, img, ood_pred, image_name)
+
+        FileOps.upload(color_local_save_url,
+                       os.path.join(self.unseen_save_url,
+                                    os.path.basename(color_local_save_url)))
         return FileOps.upload(local_save_url,
                               os.path.join(self.unseen_save_url, image_name))
 
